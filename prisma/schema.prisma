@@ -1,0 +1,348 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Extended to track onboarding completion for Clerk OTP routing.
+model User {
+  id        String     @id @default(cuid())
+  clerkId   String     @unique
+  email     String     @unique
+  name      String?
+  avatarUrl String?
+  bio       String?
+  role      UserRole
+  onboardingCompleted Boolean @default(false)
+  organizer Organizer?
+  artist    Artist?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Organizer {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id])
+  studioName    String?
+  events        Event[]
+  payments      Payment[]
+  tickets       Ticket[]
+  instagram     String?
+  tiktok        String?
+  youtube       String?
+  facebook      String?
+  whatsapp      String?
+  website       String?
+  walletAddress String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Artist {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  instagram     String?
+  tiktok        String?
+  youtube       String?
+  facebook      String?
+  whatsapp      String?
+  website       String?
+  walletAddress String?
+  danceStyles   String[] // e.g. ["Bachata", "Salsa"]
+
+  events ArtistOnEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Extended to capture publish scheduling + privacy toggles required by the Review & Publish UI.
+model Event {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  organizerId String
+  organizer   Organizer @relation(fields: [organizerId], references: [id])
+
+  title       String
+  summary     String        @db.VarChar(140)
+  description String? // "Overview"
+  goodToKnow  String? // FAQs / highlights
+  bannerUrl   String?
+  category    EventCategory
+
+  type   EventType   @default(SINGLE)
+  status EventStatus @default(DRAFT)
+
+  isPublic          Boolean    @default(true)
+  allowPrivateAccess Boolean   @default(false)
+  publishAt         DateTime?
+
+  locationType LocationType
+  venueName    String?
+  addressLine1 String?
+  city         String?
+  country      String?
+  onlineUrl    String?
+  timezone     String?
+
+  startDateTime DateTime
+  endDateTime   DateTime
+
+  // Recurring support later via instances or pattern if needed
+  // instances     EventInstance[]
+
+  ticketTypes TicketType[]
+  tickets     Ticket[]
+  artists     ArtistOnEvent[]
+
+  checkouts CheckoutSession[]
+  payments  Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizerId])
+  @@index([status, startDateTime])
+  @@index([category])
+  @@index([city])
+}
+
+model ArtistOnEvent {
+  artistId String
+  eventId  String
+
+  artist Artist @relation(fields: [artistId], references: [id])
+  event  Event  @relation(fields: [eventId], references: [id])
+
+  role String? // "Teacher", "DJ", "Guest"
+
+  createdAt DateTime @default(now())
+
+  @@id([artistId, eventId])
+}
+
+model TicketType {
+  id      String @id @default(cuid())
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+
+  name                String // e.g. "General Admission"
+  description         String?
+  priceCents          Int // store fiat price in smallest unit
+  currency            String    @default("USD")
+  isBchDiscounted     Boolean   @default(false)
+  isEarlyBird         Boolean   @default(false)
+  earlyBirdPriceCents Int?
+  earlyBirdEndsAt     DateTime?
+  quantityTotal       Int
+  quantitySold        Int       @default(0)
+
+  salesStart DateTime?
+  salesEnd   DateTime?
+
+  visible Boolean @default(true)
+
+  tickets Ticket[]
+
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  checkoutSessions CheckoutSession[]
+
+  @@index([eventId])
+}
+
+model Ticket {
+  id           String     @id @default(cuid())
+  ticketTypeId String
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id])
+
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+
+  organizerId String
+  organizer   Organizer @relation(fields: [organizerId], references: [id])
+
+  attendeeName  String
+  attendeeEmail String
+  attendeePhone String?
+
+  status TicketStatus @default(PENDING)
+
+  referenceCode String @unique // for QR / check-in
+
+  paymentId String?  @unique
+  payment   Payment? @relation(fields: [paymentId], references: [id])
+
+  nftTicket NftTicket?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId])
+  @@index([organizerId])
+}
+
+model Payment {
+  id      String @id @default(cuid())
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+
+  organizerId String
+  organizer   Organizer @relation(fields: [organizerId], references: [id])
+
+  method PaymentMethod
+  status PaymentStatus @default(PENDING)
+
+  amountCents Int // fiat-equivalent value, even for BCH
+  currency    String @default("USD")
+
+  // BCH-specific
+  bchAmountSats Int?
+  bchAddress    String?
+  txHash        String? @unique
+
+  // Fiat-specific (Google Pay / Apple Pay)
+  provider          String? // "GOOGLE_PAY" | "APPLE_PAY"
+  providerPaymentId String?
+
+  ticket Ticket?
+
+  cashback Cashback?
+
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  checkoutSessions CheckoutSession[]
+
+  @@index([eventId])
+  @@index([organizerId])
+  @@index([status, method])
+}
+
+model NftTicket {
+  id       String @id @default(cuid())
+  ticketId String @unique
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+
+  tokenId       String // CashToken identifier / outpoint
+  walletAddress String // user’s BCH/Selene address
+  mintedAt      DateTime @default(now())
+}
+
+model Cashback {
+  id        String  @id @default(cuid())
+  paymentId String  @unique
+  payment   Payment @relation(fields: [paymentId], references: [id])
+
+  amountSats Int // BCH cashback value
+  stampId    String? // CashStamp reference / id
+  claimedAt  DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+// Extended to persist price snapshots from the attendee checkout step.
+model CheckoutSession {
+  id      String @id @default(cuid())
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+
+  ticketTypeId String
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id])
+
+  quantity Int @default(1)
+
+  attendeeName  String
+  attendeeEmail String
+  attendeePhone String?
+
+  currency       String @default("USD")
+  unitPriceCents Int
+  discountCents  Int @default(0)
+  totalCents     Int
+
+  paymentMethod PaymentMethod?
+  status        CheckoutStatus @default(STARTED)
+
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id])
+
+  // For BCH flow, you can store the generated payment address / ref
+  bchAddress String?
+  expiresAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId])
+  @@index([status])
+}
+
+enum UserRole {
+  ORGANIZER
+  ARTIST
+  ATTENDEE
+}
+
+enum EventType {
+  SINGLE
+  RECURRING
+}
+
+enum LocationType {
+  VENUE
+  ONLINE
+  TBA
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum EventCategory {
+  BACHATA
+  SALSA
+  KIZOMBA
+  ZOUK
+  URBAN_KIZ
+  AFRO
+  TANGO
+  HIP_HOP
+  CONTEMPORARY
+  REGGAETON
+  LATIN_FUSION
+  OTHER
+}
+
+enum PaymentMethod {
+  BCH
+  FIAT
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum TicketStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REFUNDED
+}
+
+enum CheckoutStatus {
+  STARTED
+  AWAITING_PAYMENT
+  COMPLETED
+  EXPIRED
+}

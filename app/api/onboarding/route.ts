@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 
 import { ApiError, handleApiError, respond } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
+import { createEncryptedBchWallet } from '@/lib/server/bch-wallets';
 import prisma from '@/lib/prisma';
 import { onboardingSchema } from '@/lib/validators';
 
@@ -28,6 +29,24 @@ export async function POST(request: NextRequest) {
       attendee: UserRole.ATTENDEE,
     };
 
+    const shouldCreateOrganizerWallet =
+      payload.role === 'organizer' &&
+      (!user.organizer?.bchXpub ||
+        !user.organizer?.bchSeedEnc ||
+        !user.organizer?.bchXprivEnc);
+    const shouldCreateArtistWallet =
+      payload.role === 'artist' &&
+      (!user.artist?.bchXpub ||
+        !user.artist?.bchSeedEnc ||
+        !user.artist?.bchXprivEnc);
+
+    const organizerWalletData = shouldCreateOrganizerWallet
+      ? createEncryptedBchWallet()
+      : null;
+    const artistWalletData = shouldCreateArtistWallet
+      ? createEncryptedBchWallet()
+      : null;
+
     const updatedUser = await prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: user.id },
@@ -44,8 +63,12 @@ export async function POST(request: NextRequest) {
         const organizerData = payload.organizer ?? {};
         await tx.organizer.upsert({
           where: { userId: user.id },
-          update: { ...organizerData },
-          create: { userId: user.id, ...organizerData },
+          update: { ...organizerData, ...(organizerWalletData ?? {}) },
+          create: {
+            userId: user.id,
+            ...organizerData,
+            ...(organizerWalletData ?? {}),
+          },
         });
       }
 
@@ -53,8 +76,12 @@ export async function POST(request: NextRequest) {
         const artistData = payload.artist ?? {};
         await tx.artist.upsert({
           where: { userId: user.id },
-          update: { ...artistData },
-          create: { userId: user.id, ...artistData },
+          update: { ...artistData, ...(artistWalletData ?? {}) },
+          create: {
+            userId: user.id,
+            ...artistData,
+            ...(artistWalletData ?? {}),
+          },
         });
       }
 

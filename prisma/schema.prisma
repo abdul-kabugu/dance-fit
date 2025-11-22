@@ -10,16 +10,16 @@ datasource db {
 
 // Extended to track onboarding completion for Clerk OTP routing.
 model User {
-  id        String     @id @default(cuid())
-  clerkId   String     @unique
-  email     String     @unique
-  name      String?
-  avatarUrl String?
-  bio       String?
-  role      UserRole
-  onboardingCompleted Boolean @default(false)
-  organizer Organizer?
-  artist    Artist?
+  id                  String     @id @default(cuid())
+  clerkId             String     @unique
+  email               String     @unique
+  name                String?
+  avatarUrl           String?
+  bio                 String?
+  role                UserRole
+  onboardingCompleted Boolean    @default(false)
+  organizer           Organizer?
+  artist              Artist?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -40,6 +40,10 @@ model Organizer {
   whatsapp      String?
   website       String?
   walletAddress String?
+  bchXpub       String? // organizer HD wallet (public)
+  bchXprivEnc   String? // encrypted xpriv (optional, custodial)
+  bchSeedEnc    String? // encrypted seed (optional, if you store seed)
+  nextIndex     Int       @default(0) // for deriving new addresses
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -55,6 +59,10 @@ model Artist {
   whatsapp      String?
   website       String?
   walletAddress String?
+  bchXpub       String? // organizer HD wallet (public)
+  bchXprivEnc   String? // encrypted xpriv (optional, custodial)
+  bchSeedEnc    String? // encrypted seed (optional, if you store seed)
+  nextIndex     Int      @default(0) // for deriving new addresses
   danceStyles   String[] // e.g. ["Bachata", "Salsa"]
 
   events ArtistOnEvent[]
@@ -80,9 +88,9 @@ model Event {
   type   EventType   @default(SINGLE)
   status EventStatus @default(DRAFT)
 
-  isPublic          Boolean    @default(true)
+  isPublic           Boolean   @default(true)
   allowPrivateAccess Boolean   @default(false)
-  publishAt         DateTime?
+  publishAt          DateTime?
 
   locationType LocationType
   venueName    String?
@@ -204,9 +212,11 @@ model Payment {
   currency    String @default("USD")
 
   // BCH-specific
-  bchAmountSats Int?
-  bchAddress    String?
-  txHash        String? @unique
+  bchAmountSats      Int?
+  txHash             String? @unique
+  bchAddress         String? // derived address for this session
+  bchDerivationIndex Int? // index in HD path
+  txId               String? // confirmed transaction
 
   // Fiat-specific (Google Pay / Apple Pay)
   provider          String? // "GOOGLE_PAY" | "APPLE_PAY"
@@ -236,14 +246,16 @@ model NftTicket {
 }
 
 model Cashback {
-  id        String  @id @default(cuid())
-  paymentId String  @unique
-  payment   Payment @relation(fields: [paymentId], references: [id])
+  id         String   @id @default(cuid())
+  paymentId  String   @unique
+  privateKey String // encrypted WIF
+  address    String
+  amountSats Int
+  fundedTxId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  amountSats Int // BCH cashback value
-  stampId    String? // CashStamp reference / id
-  claimedAt  DateTime?
-  createdAt  DateTime  @default(now())
+  payment Payment @relation(fields: [paymentId], references: [id])
 }
 
 // Extended to persist price snapshots from the attendee checkout step.
@@ -263,7 +275,7 @@ model CheckoutSession {
 
   currency       String @default("USD")
   unitPriceCents Int
-  discountCents  Int @default(0)
+  discountCents  Int    @default(0)
   totalCents     Int
 
   paymentMethod PaymentMethod?

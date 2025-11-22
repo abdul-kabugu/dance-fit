@@ -63,6 +63,15 @@ export function PaymentSessionTracker({
     let cancelled = false;
     const fetchSession = async () => {
       try {
+        // 1. Trigger backend Electrum verification (updates DB)
+        try {
+          await fetch(`/api/payments/verify/${encodeURIComponent(sessionId)}`, {
+            cache: 'no-store',
+          });
+        } catch (err) {
+          // Electrum errors should NOT break feechSession
+          console.warn('Payment verification error:', err);
+        }
         const response = await fetch(
           `/api/payments/sessions/${encodeURIComponent(sessionId)}`,
           { cache: 'no-store' },
@@ -206,13 +215,18 @@ export function PaymentSessionTracker({
       <header className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 border-b backdrop-blur">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <Link href={`/events/${eventIdentifier}`} className="flex items-center gap-2">
+            <Link
+              href={`/events/${eventIdentifier}`}
+              className="flex items-center gap-2"
+            >
               <Button variant="ghost" size="icon" className="size-9">
                 <ChevronLeft className="size-5" />
               </Button>
               <div className="flex items-center gap-2">
                 <div className="bg-primary flex size-8 items-center justify-center rounded-lg">
-                  <span className="text-primary-foreground text-lg font-bold">D</span>
+                  <span className="text-primary-foreground text-lg font-bold">
+                    D
+                  </span>
                 </div>
                 <span className="hidden text-xl font-semibold sm:inline">
                   DanceFit
@@ -242,7 +256,7 @@ export function PaymentSessionTracker({
               <div className="rounded-2xl border p-5">
                 <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">
+                    <p className="text-muted-foreground text-sm font-medium">
                       Amount Due
                     </p>
                     <p className="text-4xl font-bold tracking-tight">
@@ -252,8 +266,8 @@ export function PaymentSessionTracker({
                       ≈ ${ticketPrice.toFixed(2)} USD
                     </p>
                   </div>
-                  <div className="rounded-xl bg-muted/50 p-3 text-center">
-                    <p className="text-sm font-medium text-muted-foreground">
+                  <div className="bg-muted/50 rounded-xl p-3 text-center">
+                    <p className="text-muted-foreground text-sm font-medium">
                       Session Expires In
                     </p>
                     <p className="text-2xl font-semibold">
@@ -264,11 +278,11 @@ export function PaymentSessionTracker({
                 </div>
 
                 <div className="space-y-3">
-                  <p className="text-sm font-medium text-muted-foreground">
+                  <p className="text-muted-foreground text-sm font-medium">
                     Payment Address
                   </p>
                   <div className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-sm font-mono">
+                    <div className="font-mono text-sm">
                       {truncatedAddress || '---'}
                     </div>
                     <div className="flex gap-2">
@@ -280,8 +294,8 @@ export function PaymentSessionTracker({
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-muted/50 p-4">
-                  <p className="text-sm font-semibold text-muted-foreground">
+                <div className="bg-muted/50 rounded-xl p-4">
+                  <p className="text-muted-foreground text-sm font-semibold">
                     Payment Status
                   </p>
                   <div className="mt-2 flex items-center gap-2 text-lg font-semibold">
@@ -290,10 +304,11 @@ export function PaymentSessionTracker({
                   </div>
                 </div>
 
-                <div className="grid gap-3 text-sm text-muted-foreground">
+                <div className="text-muted-foreground grid gap-3 text-sm">
                   <p>1. Open your BCH wallet.</p>
                   <p>
-                    2. Send <strong>{bchAmount} BCH</strong> to the address above.
+                    2. Send <strong>{bchAmount} BCH</strong> to the address
+                    above.
                   </p>
                   <p>3. Stay on this page while we detect your payment.</p>
                 </div>
@@ -311,7 +326,7 @@ export function PaymentSessionTracker({
             <CardContent className="space-y-4">
               <div className="rounded-xl border p-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">
+                  <p className="text-muted-foreground text-sm font-medium">
                     Event
                   </p>
                   <h2 className="text-xl font-semibold">{event.title}</h2>
@@ -334,9 +349,7 @@ export function PaymentSessionTracker({
                     <MapPin className="text-muted-foreground size-4" />
                     <div>
                       <p className="font-medium">Location</p>
-                      <p className="text-muted-foreground">
-                        {eventLocation}
-                      </p>
+                      <p className="text-muted-foreground">{eventLocation}</p>
                       {eventAddress && (
                         <p className="text-muted-foreground">{eventAddress}</p>
                       )}
@@ -356,8 +369,8 @@ export function PaymentSessionTracker({
                 </div>
               </div>
 
-              <div className="rounded-xl bg-muted/40 p-4">
-                <p className="text-sm font-medium text-muted-foreground">
+              <div className="bg-muted/40 rounded-xl p-4">
+                <p className="text-muted-foreground text-sm font-medium">
                   Ticket Details
                 </p>
                 <div className="mt-2 flex items-center justify-between text-sm">
@@ -367,17 +380,17 @@ export function PaymentSessionTracker({
                     {currentSession.ticketType.isEarlyBird && ' (Early Bird)'}
                   </span>
                 </div>
-                <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
+                <div className="text-muted-foreground mt-2 flex items-center justify-between text-sm">
                   <span>Attendee</span>
                   <span>{currentSession.attendeeName}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <div className="text-muted-foreground flex items-center justify-between text-sm">
                   <span>Email</span>
                   <span>{currentSession.attendeeEmail}</span>
                 </div>
               </div>
 
-              <div className="rounded-xl bg-muted/40 p-4 text-sm text-muted-foreground">
+              <div className="bg-muted/40 text-muted-foreground rounded-xl p-4 text-sm">
                 <p className="font-semibold">Need help?</p>
                 <p>Contact support@dancefit.com for assistance.</p>
               </div>

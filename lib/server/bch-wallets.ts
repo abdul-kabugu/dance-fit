@@ -1,8 +1,6 @@
-'use server';
-
-import { createCipheriv, randomBytes } from 'crypto';
-
+//'use server';
 import { mnemonicToSeedSync } from '@scure/bip39';
+import { createCipheriv, randomBytes } from 'crypto';
 
 import { generateOrganizerWallet } from '@/lib/bch-wallets';
 

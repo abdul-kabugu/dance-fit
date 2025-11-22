@@ -70,27 +70,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { payment, updatedSession, bchAddress } =
-      await prisma.$transaction(async (tx) => {
-        const organizerWallet = await tx.organizer.update({
-          where: { id: organizer.id },
-          data: { nextIndex: { increment: 1 } },
-          select: { bchXpub: true, nextIndex: true },
-        });
+    let organizerWallet;
+    try {
+      organizerWallet = await prisma.organizer.update({
+        where: { id: organizer.id },
+        data: { nextIndex: { increment: 1 } },
+        select: { bchXpub: true, nextIndex: true },
+      });
+    } catch (error) {
+      throw new ApiError(
+        500,
+        'Failed to reserve BCH address for this organizer.',
+      );
+    }
 
-        if (!organizerWallet.bchXpub) {
-          throw new ApiError(
-            400,
-            'Organizer BCH wallet missing xpub. Cannot derive address.',
-          );
-        }
+    if (!organizerWallet.bchXpub) {
+      throw new ApiError(
+        400,
+        'Organizer BCH wallet missing xpub. Cannot derive address.',
+      );
+    }
 
-        const derivationIndex = organizerWallet.nextIndex - 1;
-        const { address } = deriveBchAddressFromXpub(
-          organizerWallet.bchXpub,
-          derivationIndex,
-        );
+    const derivationIndex = Math.max((organizerWallet.nextIndex ?? 1) - 1, 0);
+    const { address: derivedAddress } = deriveBchAddressFromXpub(
+      organizerWallet.bchXpub,
+      derivationIndex,
+    );
 
+    let paymentResult;
+    try {
+      paymentResult = await prisma.$transaction(async (tx) => {
         const createdPayment = await tx.payment.create({
           data: {
             eventId: checkout.eventId,
@@ -100,12 +109,12 @@ export async function POST(request: NextRequest) {
             amountCents: totalCents,
             currency: checkout.currency,
             bchAmountSats,
-            bchAddress: address,
+            bchAddress: derivedAddress,
             bchDerivationIndex: derivationIndex,
           },
         });
 
-        const session = await tx.checkoutSession.update({
+        await tx.checkoutSession.update({
           where: { id: checkout.id },
           data: {
             paymentId: createdPayment.id,
@@ -113,20 +122,44 @@ export async function POST(request: NextRequest) {
             discountCents,
             totalCents,
             status: CheckoutStatus.AWAITING_PAYMENT,
-            bchAddress: address,
+            bchAddress: derivedAddress,
             expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-          },
-          include: {
-            event: {
-              include: { organizer: true },
-            },
-            ticketType: true,
-            payment: true,
           },
         });
 
-        return { payment: createdPayment, updatedSession: session, bchAddress: address };
+        return {
+          payment: createdPayment,
+          bchAddress: derivedAddress,
+        };
       });
+    } catch (error) {
+      await prisma.organizer.update({
+        where: { id: organizer.id },
+        data: {
+          nextIndex: {
+            decrement: 1,
+          },
+        },
+      });
+      throw error;
+    }
+
+    const { payment, bchAddress } = paymentResult;
+
+    const updatedSession = await prisma.checkoutSession.findUnique({
+      where: { id: checkout.id },
+      include: {
+        event: {
+          include: { organizer: true },
+        },
+        ticketType: true,
+        payment: true,
+      },
+    });
+
+    if (!updatedSession) {
+      throw new ApiError(404, 'Checkout session not found after update.');
+    }
 
     return respond({
       session: updatedSession,

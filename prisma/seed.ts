@@ -1,5 +1,6 @@
 import { faker } from '@faker-js/faker';
 import {
+  CashbackStatus,
   CheckoutStatus,
   EventCategory,
   EventStatus,
@@ -32,6 +33,9 @@ type EventWithTickets = Prisma.EventGetPayload<{
 faker.seed(2025);
 
 const prisma = new PrismaClient();
+
+const organizerWallets: Record<string, { bchXpub: string; cursor: number }> =
+  {};
 
 const danceStylePool = [
   'Bachata',
@@ -145,6 +149,43 @@ function createSocialLinks(handle: string) {
   };
 }
 
+function randomPhone() {
+  return faker.phone.number('+1 ###-###-####');
+}
+
+function randomXpub() {
+  return `xpub${faker.string.alphanumeric({ length: 96, casing: 'lower' })}`;
+}
+
+function randomEncrypted(label: string) {
+  return `${label}_${faker.string.hexadecimal({
+    length: 64,
+    casing: 'lower',
+    prefix: '',
+  })}`;
+}
+
+function generateBchAddress() {
+  return `bitcoincash:q${faker.string.alphanumeric({ length: 38, casing: 'lower' })}`;
+}
+
+function usdToSats(totalCents: number) {
+  const usd = totalCents / 100;
+  const rate = faker.number.float({ min: 240, max: 310, fractionDigits: 2 });
+  return Math.max(1, Math.round((usd / rate) * 1e8));
+}
+
+function computeDiscount(ticketType: TicketType, method: PaymentMethod) {
+  if (method === PaymentMethod.BCH && ticketType.isBchDiscounted) {
+    return Math.round(ticketType.priceCents * 0.1);
+  }
+  return 0;
+}
+
+function randomEventTitle() {
+  return `${faker.helpers.arrayElement(eventTitleAdjectives)} ${faker.helpers.arrayElement(eventTitleNouns)}`;
+}
+
 async function resetDatabase() {
   await prisma.nftTicket.deleteMany();
   await prisma.cashback.deleteMany();
@@ -166,6 +207,7 @@ async function createOrganizers(count: number) {
     const name = faker.person.fullName();
     const handle = faker.internet.username();
     const socialLinks = createSocialLinks(handle);
+    const xpub = randomXpub();
 
     const organizer = await prisma.user.create({
       data: {
@@ -183,13 +225,22 @@ async function createOrganizers(count: number) {
           create: {
             studioName: `${faker.company.buzzAdjective()} ${faker.company.buzzNoun()} Dance`,
             ...socialLinks,
-            walletAddress: faker.finance.bitcoinAddress(),
+            walletAddress: generateBchAddress(),
+            bchXpub: xpub,
+            bchXprivEnc: randomEncrypted('xprv'),
+            bchSeedEnc: randomEncrypted('seed'),
+            nextIndex: 0,
           },
         },
       },
       include: { organizer: true },
     });
 
+    if (!organizer.organizer) {
+      throw new Error('Organizer profile missing');
+    }
+
+    organizerWallets[organizer.organizer.id] = { bchXpub: xpub, cursor: 0 };
     organizers.push(organizer);
   }
 
@@ -224,7 +275,11 @@ async function createArtists(count: number) {
           create: {
             ...socialLinks,
             danceStyles,
-            walletAddress: faker.finance.bitcoinAddress(),
+            walletAddress: generateBchAddress(),
+            bchXpub: randomXpub(),
+            bchXprivEnc: randomEncrypted('xprv'),
+            bchSeedEnc: randomEncrypted('seed'),
+            nextIndex: faker.number.int({ min: 0, max: 10 }),
           },
         },
       },
@@ -253,7 +308,7 @@ async function createAttendees(count: number) {
         avatarUrl: faker.image.avatar(),
         bio: faker.person.bio(),
         role: UserRole.ATTENDEE,
-        onboardingCompleted: faker.number.int({ min: 0, max: 100 }) > 25,
+        onboardingCompleted: faker.datatype.boolean(),
       },
     });
     attendees.push(attendee);
@@ -265,45 +320,31 @@ async function createAttendees(count: number) {
 function buildTicketTypes(
   startDate: Date,
 ): Prisma.TicketTypeCreateWithoutEventInput[] {
-  const labels = [
-    'Full Pass',
-    'VIP Immersion',
-    'Social Pass',
-    'Workshop Day',
-    'Performer Badge',
-  ];
+  const labels = ['Full Pass', 'VIP Immersion', 'Social Pass', 'Workshop Day'];
+  const selected = faker.helpers.arrayElements(labels, { min: 2, max: 3 });
 
-  const options = faker.helpers.arrayElements(labels, {
-    min: 2,
-    max: 3,
-  });
-
-  return options.map((label) => {
-    const priceCents = faker.number.int({ min: 60, max: 250 }) * 100;
+  return selected.map((label) => {
+    const priceCents = faker.number.int({ min: 80, max: 320 }) * 100;
     const earlyBird = faker.datatype.boolean();
-    const discountMultiplier = faker.number.float({ min: 0.75, max: 0.9 });
+    const earlyDiscount = faker.number.float({
+      min: 0.7,
+      max: 0.9,
+      fractionDigits: 2,
+    });
     const earlyBirdPriceCents = earlyBird
-      ? Math.round(priceCents * discountMultiplier)
+      ? Math.round(priceCents * earlyDiscount)
       : undefined;
-
-    const salesStart = new Date(
-      startDate.getTime() -
-        faker.number.int({ min: 30, max: 90 }) * 24 * 60 * 60 * 1000,
-    );
+    const salesStart = faker.date.recent({ days: 60, refDate: startDate });
     const salesEnd = new Date(
-      startDate.getTime() -
-        faker.number.int({ min: 2, max: 7 }) * 24 * 60 * 60 * 1000,
+      startDate.getTime() - faker.number.int({ min: 2, max: 7 }) * 86_400_000,
     );
-
     const earlyBirdEndsAt =
       earlyBird && earlyBirdPriceCents
         ? new Date(
             startDate.getTime() -
-              faker.number.int({ min: 10, max: 25 }) * 24 * 60 * 60 * 1000,
+              faker.number.int({ min: 10, max: 25 }) * 86_400_000,
           )
         : undefined;
-
-    const visible = faker.number.int({ min: 0, max: 100 }) > 5;
 
     return {
       name: label,
@@ -313,86 +354,53 @@ function buildTicketTypes(
       isEarlyBird: earlyBird,
       earlyBirdPriceCents,
       earlyBirdEndsAt,
-      quantityTotal: faker.number.int({ min: 60, max: 220 }),
+      quantityTotal: faker.number.int({ min: 80, max: 250 }),
       salesStart,
       salesEnd,
-      visible,
+      visible: faker.datatype.boolean({ probability: 0.92 }),
       isBchDiscounted: faker.datatype.boolean(),
     };
   });
-}
-
-function randomEventTitle() {
-  return `${faker.helpers.arrayElement(eventTitleAdjectives)} ${faker.helpers.arrayElement(
-    eventTitleNouns,
-  )}`;
 }
 
 async function createEvents(
   organizers: OrganizerWithProfile[],
   artists: ArtistWithProfile[],
 ) {
-  const events: EventWithTickets[] = [];
   const categories = Object.values(EventCategory);
   const types = Object.values(EventType);
   const locationTypes = Object.values(LocationType);
+  const events: EventWithTickets[] = [];
 
   for (const organizer of organizers) {
+    const organizerProfileId = organizer.organizer?.id;
+    if (!organizerProfileId) {
+      throw new Error(`Organizer profile missing for ${organizer.id}`);
+    }
+
     const eventCount = faker.number.int({ min: 2, max: 4 });
 
     for (let i = 0; i < eventCount; i += 1) {
-      const organizerProfileId = organizer.organizer?.id;
-      if (!organizerProfileId) {
-        throw new Error(`Organizer profile missing for user ${organizer.id}`);
-      }
       const location = faker.helpers.arrayElement(cityPool);
-      const dateChoice = faker.number.int({ min: 0, max: 2 });
-      const startDateTime =
-        dateChoice === 0
-          ? faker.date.soon({ days: 90 })
-          : dateChoice === 1
-            ? faker.date.recent({ days: 45 })
-            : faker.date.past({ years: 1 });
+      const startDateTime = faker.date.soon({ days: 120 });
       const endDateTime = new Date(
         startDateTime.getTime() +
-          faker.number.int({ min: 3, max: 8 }) * 60 * 60 * 1000,
+          faker.number.int({ min: 3, max: 8 }) * 3_600_000,
       );
-
       const title = randomEventTitle();
-      const slug = `${slugify(title)}-${faker.string.alphanumeric({
-        length: 4,
-      })}`.toLowerCase();
-
+      const slug =
+        `${slugify(title)}-${faker.string.alphanumeric({ length: 4 })}`.toLowerCase();
+      const status = faker.helpers.arrayElement([
+        EventStatus.PUBLISHED,
+        EventStatus.PUBLISHED,
+        EventStatus.DRAFT,
+        EventStatus.ARCHIVED,
+      ]);
       const locationType = faker.helpers.arrayElement(locationTypes);
-      const isUpcoming = startDateTime > new Date();
-      const status = isUpcoming
-        ? EventStatus.PUBLISHED
-        : faker.helpers.arrayElement([
-            EventStatus.PUBLISHED,
-            EventStatus.ARCHIVED,
-            EventStatus.DRAFT,
-          ]);
-      const publishAt =
-        status === EventStatus.PUBLISHED || status === EventStatus.ARCHIVED
-          ? faker.date.past({ refDate: startDateTime, years: 0.05 })
-          : null;
-
-      const goodToKnow = [
-        `Doors open at ${faker.helpers.arrayElement([
-          '6:30 PM',
-          '7:00 PM',
-          '8:00 PM',
-        ])}`,
-        'Bring dance shoes and water bottle',
-        'Complimentary hydration station available',
-        faker.datatype.boolean()
-          ? 'BCH payments eligible for cashback'
-          : 'Professional photo corner all night',
-      ].join('\n');
 
       const eventArtists = faker.helpers.arrayElements(artists, {
         min: 1,
-        max: Math.min(3, artists.length),
+        max: Math.min(4, artists.length),
       });
 
       const event = await prisma.event.create({
@@ -402,17 +410,25 @@ async function createEvents(
           title,
           summary: truncate(faker.lorem.sentences(2)),
           description: faker.lorem.paragraphs(3, '\n\n'),
-          goodToKnow,
-          bannerUrl: faker.image.urlPicsumPhotos({
-            width: 1600,
-            height: 900,
-          }),
+          goodToKnow: [
+            'Doors open 30 minutes before the first workshop.',
+            'Bring dance shoes, BCH wallet, and hydration.',
+            faker.helpers.arrayElement([
+              'Professional photo booth available.',
+              'BCH payments eligible for cashback.',
+              'Live DJs all night long.',
+            ]),
+          ].join('\n'),
+          bannerUrl: faker.image.urlPicsumPhotos({ width: 1600, height: 900 }),
           category: faker.helpers.arrayElement(categories),
           type: faker.helpers.arrayElement(types),
           status,
           isPublic: status !== EventStatus.DRAFT || faker.datatype.boolean(),
           allowPrivateAccess: faker.datatype.boolean(),
-          publishAt,
+          publishAt:
+            status === EventStatus.DRAFT
+              ? null
+              : faker.date.recent({ days: 30 }),
           locationType,
           venueName:
             locationType === LocationType.VENUE ? location.venue : null,
@@ -434,7 +450,7 @@ async function createEvents(
             create: eventArtists.map((artistRecord) => {
               if (!artistRecord.artist) {
                 throw new Error(
-                  `Artist profile missing for user ${artistRecord.id}`,
+                  `Artist profile missing for ${artistRecord.id}`,
                 );
               }
               return {
@@ -449,9 +465,7 @@ async function createEvents(
             }),
           },
         },
-        include: {
-          ticketTypes: true,
-        },
+        include: { ticketTypes: true },
       });
 
       events.push(event);
@@ -465,160 +479,160 @@ function pickAttendee(attendees: User[]) {
   return faker.helpers.arrayElement(attendees);
 }
 
-function computeDiscount(ticketType: TicketType, method: PaymentMethod) {
-  if (method === PaymentMethod.BCH && ticketType.isBchDiscounted) {
-    return Math.round(ticketType.priceCents * 0.1);
+function deriveBchAddress(organizerId: string) {
+  const wallet = organizerWallets[organizerId];
+  if (!wallet) {
+    throw new Error(`Wallet config missing for organizer ${organizerId}`);
   }
-  return 0;
+  const index = wallet.cursor;
+  wallet.cursor += 1;
+  return {
+    address: generateBchAddress(),
+    derivationIndex: index,
+  };
 }
 
-async function createCompletedOrder(options: {
+async function createCashbackRecord(
+  paymentId: string,
+  organizerId: string,
+  baseAmount: number,
+) {
+  const status = faker.helpers.arrayElement([
+    CashbackStatus.UNCLAIMED,
+    CashbackStatus.UNCLAIMED,
+    CashbackStatus.CLAIMED,
+    CashbackStatus.FAILED,
+  ]);
+  return prisma.cashback.create({
+    data: {
+      paymentId,
+      organizerId,
+      amountSats: Math.max(
+        5_000,
+        Math.round(baseAmount * faker.number.float({ min: 0.05, max: 0.12 })),
+      ),
+      bchAddress: generateBchAddress(),
+      wifEncrypted: randomEncrypted('wif'),
+      status,
+      fundedTxId:
+        status === CashbackStatus.CLAIMED || status === CashbackStatus.FAILED
+          ? faker.string.hexadecimal({
+              length: 64,
+              casing: 'lower',
+              prefix: '',
+            })
+          : null,
+    },
+  });
+}
+
+interface OrderFlowInput {
   event: EventWithTickets;
   ticketType: TicketType;
   attendee: User;
   method: PaymentMethod;
-  refunded?: boolean;
-}) {
-  const { event, ticketType, attendee, method, refunded } = options;
+  checkoutStatus: CheckoutStatus;
+  paymentStatus?: PaymentStatus;
+  includeCashback?: boolean;
+  issueTicket?: boolean;
+  ticketStatus?: TicketStatus;
+  mintNft?: boolean;
+}
+
+async function createOrderFlow(params: OrderFlowInput) {
+  const {
+    event,
+    ticketType,
+    attendee,
+    method,
+    checkoutStatus,
+    paymentStatus,
+    includeCashback,
+    issueTicket,
+    ticketStatus,
+    mintNft,
+  } = params;
+
   const discountCents = computeDiscount(ticketType, method);
   const totalCents = ticketType.priceCents - discountCents;
 
-  const payment = await prisma.payment.create({
-    data: {
+  let paymentId: string | undefined;
+  let paymentBchAddress: string | null = null;
+
+  if (paymentStatus) {
+    const paymentData = {
       eventId: event.id,
       organizerId: event.organizerId,
       method,
-      status: refunded ? PaymentStatus.REFUNDED : PaymentStatus.COMPLETED,
+      status: paymentStatus,
       amountCents: totalCents,
       currency: ticketType.currency,
-      bchAmountSats:
-        method === PaymentMethod.BCH
-          ? Math.round(totalCents * faker.number.float({ min: 30, max: 50 }))
-          : null,
-      bchAddress:
-        method === PaymentMethod.BCH ? faker.finance.bitcoinAddress() : null,
-      txHash:
-        method === PaymentMethod.BCH
-          ? faker.string.hexadecimal({ length: 64, casing: 'lower' })
-          : null,
-      provider:
-        method === PaymentMethod.FIAT
-          ? faker.helpers.arrayElement(['GOOGLE_PAY', 'APPLE_PAY'])
-          : null,
-      providerPaymentId:
-        method === PaymentMethod.FIAT
-          ? `pi_${faker.string.alphanumeric({ length: 14 }).toLowerCase()}`
-          : null,
-    },
-  });
+      provider: null as string | null,
+      providerPaymentId: null as string | null,
+      bchAmountSats: null as number | null,
+      bchAddress: null as string | null,
+      bchDerivationIndex: null as number | null,
+      txHash: null as string | null,
+      txId: null as string | null,
+    };
 
-  const checkout = await prisma.checkoutSession.create({
-    data: {
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      quantity: 1,
-      attendeeName: attendee.name ?? faker.person.fullName(),
-      attendeeEmail: attendee.email,
-      //@ts-ignore
-      attendeePhone: faker.phone.number('+1 ###-###-####'),
-      currency: ticketType.currency,
-      unitPriceCents: ticketType.priceCents,
-      discountCents,
-      totalCents,
-      paymentMethod: method,
-      status: CheckoutStatus.COMPLETED,
-      paymentId: payment.id,
-      bchAddress: payment.bchAddress,
-      expiresAt: null,
-    },
-  });
-
-  const ticket = await prisma.ticket.create({
-    data: {
-      ticketTypeId: ticketType.id,
-      eventId: event.id,
-      organizerId: event.organizerId,
-      attendeeName: checkout.attendeeName,
-      attendeeEmail: attendee.email,
-      attendeePhone: checkout.attendeePhone,
-      status: refunded ? TicketStatus.REFUNDED : TicketStatus.CONFIRMED,
-      referenceCode: generateReference('TKT'),
-      paymentId: payment.id,
-    },
-  });
-
-  await prisma.ticketType.update({
-    where: { id: ticketType.id },
-    data: { quantitySold: { increment: 1 } },
-  });
-
-  if (method === PaymentMethod.BCH && !refunded) {
-    if (faker.datatype.boolean()) {
-      await prisma.nftTicket.create({
-        data: {
-          ticketId: ticket.id,
-          tokenId: faker.string.hexadecimal({ length: 32 }),
-          walletAddress: faker.finance.bitcoinAddress(),
-        },
-      });
+    if (method === PaymentMethod.BCH) {
+      const { address, derivationIndex } = deriveBchAddress(event.organizerId);
+      paymentBchAddress = address;
+      paymentData.bchAddress = address;
+      paymentData.bchAmountSats = usdToSats(totalCents);
+      paymentData.bchDerivationIndex = derivationIndex;
+      if (
+        paymentStatus === PaymentStatus.COMPLETED ||
+        paymentStatus === PaymentStatus.REFUNDED
+      ) {
+        paymentData.txHash = faker.string.hexadecimal({
+          length: 64,
+          casing: 'lower',
+          prefix: '',
+        });
+        paymentData.txId = faker.string.hexadecimal({
+          length: 64,
+          casing: 'lower',
+          prefix: '',
+        });
+      }
+    } else {
+      paymentData.provider = faker.helpers.arrayElement([
+        'GOOGLE_PAY',
+        'APPLE_PAY',
+      ]);
+      paymentData.providerPaymentId = `pi_${faker.string.alphanumeric({ length: 14 }).toLowerCase()}`;
     }
-    if (faker.datatype.boolean()) {
-      await prisma.cashback.create({
-        data: {
-          paymentId: payment.id,
-          amountSats: faker.number.int({ min: 10000, max: 75000 }),
-          stampId: `CS-${faker.string.alphanumeric({ length: 8 }).toUpperCase()}`,
-          claimedAt: faker.datatype.boolean() ? faker.date.recent() : null,
-        },
-      });
-    }
-  }
-}
 
-async function createPendingCheckout(options: {
-  event: EventWithTickets;
-  ticketType: TicketType;
-  attendee: User;
-  method: PaymentMethod;
-  attachPayment: boolean;
-  status: CheckoutStatus;
-}) {
-  const { event, ticketType, attendee, method, attachPayment, status } =
-    options;
-  const discountCents = computeDiscount(ticketType, method);
-  const totalCents = ticketType.priceCents - discountCents;
-  let paymentId: string | undefined;
-
-  if (attachPayment) {
-    const payment = await prisma.payment.create({
-      data: {
-        eventId: event.id,
-        organizerId: event.organizerId,
-        method,
-        status:
-          status === CheckoutStatus.AWAITING_PAYMENT
-            ? PaymentStatus.PENDING
-            : PaymentStatus.FAILED,
-        amountCents: totalCents,
-        currency: ticketType.currency,
-        bchAmountSats:
-          method === PaymentMethod.BCH
-            ? Math.round(totalCents * faker.number.float({ min: 25, max: 40 }))
-            : null,
-        bchAddress:
-          method === PaymentMethod.BCH ? faker.finance.bitcoinAddress() : null,
-        provider:
-          method === PaymentMethod.FIAT
-            ? faker.helpers.arrayElement(['GOOGLE_PAY', 'APPLE_PAY'])
-            : null,
-        providerPaymentId:
-          method === PaymentMethod.FIAT
-            ? `pi_${faker.string.alphanumeric({ length: 12 }).toLowerCase()}`
-            : null,
-      },
-    });
+    const payment = await prisma.payment.create({ data: paymentData });
     paymentId = payment.id;
+    paymentBchAddress = payment.bchAddress;
+
+    if (
+      includeCashback &&
+      payment.method === PaymentMethod.BCH &&
+      payment.bchAmountSats
+    ) {
+      await createCashbackRecord(
+        payment.id,
+        payment.organizerId,
+        payment.bchAmountSats,
+      );
+    }
   }
+
+  const sessionBchAddress =
+    method === PaymentMethod.BCH
+      ? (paymentBchAddress ?? deriveBchAddress(event.organizerId).address)
+      : null;
+
+  const expiresAt =
+    checkoutStatus === CheckoutStatus.AWAITING_PAYMENT
+      ? new Date(
+          Date.now() + faker.number.int({ min: 10, max: 30 }) * 60 * 1000,
+        )
+      : null;
 
   await prisma.checkoutSession.create({
     data: {
@@ -627,102 +641,159 @@ async function createPendingCheckout(options: {
       quantity: 1,
       attendeeName: attendee.name ?? faker.person.fullName(),
       attendeeEmail: attendee.email,
-      //@ts-ignore
-      attendeePhone: faker.phone.number('+1 ###-###-####'),
+      attendeePhone: randomPhone(),
       currency: ticketType.currency,
       unitPriceCents: ticketType.priceCents,
       discountCents,
       totalCents,
-      paymentMethod: status === CheckoutStatus.STARTED ? null : method,
-      status,
-      paymentId,
-      bchAddress:
-        method === PaymentMethod.BCH && status !== CheckoutStatus.STARTED
-          ? faker.finance.bitcoinAddress()
-          : null,
-      expiresAt:
-        status === CheckoutStatus.AWAITING_PAYMENT
-          ? new Date(
-              Date.now() + faker.number.int({ min: 10, max: 40 }) * 60000,
-            )
-          : null,
+      paymentMethod: method,
+      status: checkoutStatus,
+      paymentId: paymentId ?? null,
+      bchAddress: sessionBchAddress,
+      expiresAt,
     },
   });
+
+  if (paymentId && issueTicket) {
+    const finalTicketStatus =
+      ticketStatus ??
+      (paymentStatus === PaymentStatus.REFUNDED
+        ? TicketStatus.REFUNDED
+        : TicketStatus.CONFIRMED);
+
+    const ticket = await prisma.ticket.create({
+      data: {
+        ticketTypeId: ticketType.id,
+        eventId: event.id,
+        organizerId: event.organizerId,
+        attendeeName: attendee.name ?? faker.person.fullName(),
+        attendeeEmail: attendee.email,
+        attendeePhone: randomPhone(),
+        status: finalTicketStatus,
+        referenceCode: generateReference('DFIT'),
+        paymentId,
+      },
+    });
+
+    await prisma.ticketType.update({
+      where: { id: ticketType.id },
+      data: { quantitySold: { increment: 1 } },
+    });
+
+    if (mintNft) {
+      await prisma.nftTicket.create({
+        data: {
+          ticketId: ticket.id,
+          tokenId: faker.string.hexadecimal({
+            length: 64,
+            casing: 'lower',
+            prefix: '',
+          }),
+          walletAddress: generateBchAddress(),
+        },
+      });
+    }
+  }
 }
 
-async function seedCheckouts(events: EventWithTickets[], attendees: User[]) {
+async function seedOrders(events: EventWithTickets[], attendees: User[]) {
   for (const event of events) {
     if (!event.ticketTypes.length) continue;
     const primary = event.ticketTypes[0];
     const secondary = event.ticketTypes[1] ?? primary;
 
-    await createCompletedOrder({
-      event,
-      ticketType: primary,
-      attendee: pickAttendee(attendees),
-      method: PaymentMethod.FIAT,
-    });
-
-    await createCompletedOrder({
+    await createOrderFlow({
       event,
       ticketType: primary,
       attendee: pickAttendee(attendees),
       method: PaymentMethod.BCH,
+      checkoutStatus: CheckoutStatus.COMPLETED,
+      paymentStatus: PaymentStatus.COMPLETED,
+      includeCashback: true,
+      issueTicket: true,
+      mintNft: true,
     });
 
-    await createCompletedOrder({
+    await createOrderFlow({
+      event,
+      ticketType: primary,
+      attendee: pickAttendee(attendees),
+      method: PaymentMethod.FIAT,
+      checkoutStatus: CheckoutStatus.COMPLETED,
+      paymentStatus: PaymentStatus.COMPLETED,
+      issueTicket: true,
+    });
+
+    await createOrderFlow({
       event,
       ticketType: secondary,
       attendee: pickAttendee(attendees),
-      method: PaymentMethod.FIAT,
-      refunded: true,
+      method: PaymentMethod.BCH,
+      checkoutStatus: CheckoutStatus.COMPLETED,
+      paymentStatus: PaymentStatus.REFUNDED,
+      includeCashback: true,
+      issueTicket: true,
+      ticketStatus: TicketStatus.REFUNDED,
     });
 
-    await createPendingCheckout({
+    await createOrderFlow({
       event,
       ticketType: primary,
       attendee: pickAttendee(attendees),
       method: PaymentMethod.BCH,
-      attachPayment: false,
-      status: CheckoutStatus.AWAITING_PAYMENT,
+      checkoutStatus: CheckoutStatus.AWAITING_PAYMENT,
+      paymentStatus: PaymentStatus.PENDING,
     });
 
-    await createPendingCheckout({
+    await createOrderFlow({
       event,
       ticketType: secondary,
       attendee: pickAttendee(attendees),
       method: PaymentMethod.FIAT,
-      attachPayment: true,
-      status: CheckoutStatus.AWAITING_PAYMENT,
+      checkoutStatus: CheckoutStatus.AWAITING_PAYMENT,
+      paymentStatus: PaymentStatus.PENDING,
     });
 
-    await createPendingCheckout({
+    await createOrderFlow({
       event,
       ticketType: primary,
       attendee: pickAttendee(attendees),
-      method: PaymentMethod.FIAT,
-      attachPayment: false,
-      status: CheckoutStatus.STARTED,
+      method: PaymentMethod.BCH,
+      checkoutStatus: CheckoutStatus.STARTED,
     });
   }
+}
+
+async function syncOrganizerWalletIndexes() {
+  await Promise.all(
+    Object.entries(organizerWallets).map(([organizerId, config]) =>
+      prisma.organizer.update({
+        where: { id: organizerId },
+        data: { nextIndex: config.cursor },
+      }),
+    ),
+  );
 }
 
 async function main() {
   console.log('Resetting database…');
   await resetDatabase();
 
-  console.log('Creating core profiles…');
+  console.log('Creating organizers, artists, and attendees…');
   const [organizers, artists, attendees] = await Promise.all([
     createOrganizers(4),
     createArtists(6),
-    createAttendees(24),
+    createAttendees(28),
   ]);
 
-  console.log('Creating events, tickets, and artists on events…');
+  console.log('Creating events with ticket types and artist lineups…');
   const events = await createEvents(organizers, artists);
 
-  console.log('Creating checkout sessions, payments, and tickets…');
-  await seedCheckouts(events, attendees);
+  console.log('Creating checkout sessions, payments, tickets, cashback…');
+  await seedOrders(events, attendees);
+
+  console.log('Updating organizer wallet cursors…');
+  await syncOrganizerWalletIndexes();
 
   console.log(
     `Seeded ${organizers.length} organizers, ${artists.length} artists, ${attendees.length} attendees, and ${events.length} events.`,

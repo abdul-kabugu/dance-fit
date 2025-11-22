@@ -1,13 +1,20 @@
 'use client';
 
+import { useAuth, useUser } from '@clerk/nextjs';
+
 import { Button } from '@/components/ui/button';
 import {
   deriveBchAddressFromXpub,
   derivePrivateWalletAddress2,
   generateOrganizerWallet,
 } from '@/lib/bch-wallets';
+import { createCashbackStamp } from '@/lib/payments/cashback';
+import { fundCashbackReward } from '@/lib/payments/cashback-funding';
 
 export default function Home() {
+  const { user, isSignedIn } = useUser();
+  const { signOut } = useAuth();
+  console.log('user', isSignedIn);
   const handleGenerate = async () => {
     const { mnemonic, xprv, xpub } = await generateOrganizerWallet();
 
@@ -26,6 +33,13 @@ export default function Home() {
     console.log(`generated wallet address index ${index} address ${address}`);
   };
 
+  const generateCashbackStamp = async (xpub: string, index: number) => {
+    const { cashbackAddress, cashbackWif } = await createCashbackStamp();
+    console.log(
+      `generated wallet address  ${cashbackAddress} privateKeyWif ${cashbackWif}`,
+    );
+  };
+
   const xpub =
     'xpub6BsFMCLqMPvJ5ankRqXB82s8u168sYAARKVYagUaUnEXwt2qYbpATBiLNRvbjLjqn3R3j2PBdXDWiUBVu712XAY9mUMtU4YQUfViXhQdZUx';
   const xprv =
@@ -35,6 +49,11 @@ export default function Home() {
       <h3 className="text-3xl font-bold">Coooking......</h3>
 
       <Button onClick={handleGenerate}>Gnerate</Button>
+
+      <Button onClick={() => generateNewWallet(xpub, 0)}>
+        Gnerate wallet 0
+      </Button>
+
       <Button onClick={() => generateNewWallet(xpub, 1)}>
         Gnerate wallet 1
       </Button>
@@ -52,6 +71,13 @@ export default function Home() {
       <Button onClick={() => generateNewWalletFromPrvk(xprv, 2)}>
         Gnerate from pk
       </Button>
+
+      <Button onClick={() => generateCashbackStamp()}>
+        Gnerate Cahsback stamp
+      </Button>
+
+      <Button onClick={() => fundCashbackReward()}>fUnd cashback here</Button>
+      <Button onClick={() => signOut()}>Sign out </Button>
     </div>
   );
 }

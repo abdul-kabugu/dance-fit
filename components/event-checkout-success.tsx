@@ -29,14 +29,26 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import type { CheckoutSessionDetail } from '@/lib/event-types';
 
+type CashbackPayload = {
+  id: string;
+  amountSats: number;
+  bchAddress: string;
+  wifEncrypted: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 interface EventCheckoutSuccessProps {
   session: CheckoutSessionDetail;
   eventIdentifier: string;
+  paymentId?: string | null;
 }
 
 export function EventCheckoutSuccess({
   session,
   eventIdentifier,
+  paymentId,
 }: EventCheckoutSuccessProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -76,7 +88,54 @@ export function EventCheckoutSuccess({
 
   const ticket = session.payment?.ticket;
   const nftTokenId = ticket?.nftTicket?.tokenId;
-  const cashbackAmount = session.payment?.cashback?.amountSats;
+  const [cashbackDetails, setCashbackDetails] = useState<CashbackPayload | null>(
+    null,
+  );
+  const [cashbackError, setCashbackError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!paymentId) {
+      setCashbackDetails(null);
+      setCashbackError(null);
+      return;
+    }
+    let cancelled = false;
+    const fetchCashback = async () => {
+      try {
+        setCashbackError(null);
+        const response = await fetch(
+          `/api/payments/cashback/${encodeURIComponent(paymentId)}`,
+          { cache: 'no-store' },
+        );
+        if (!response.ok) {
+          if (response.status === 404) {
+            if (!cancelled) setCashbackDetails(null);
+            return;
+          }
+          throw new Error('Failed to load cashback details.');
+        }
+        const data = await response.json();
+        if (!cancelled) {
+          setCashbackDetails(data.cashback);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setCashbackError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to load cashback.',
+        );
+      }
+    };
+    fetchCashback();
+    return () => {
+      cancelled = true;
+    };
+  }, [paymentId]);
+
+  const fallbackCashback = session.payment?.cashback ?? null;
+  const cashbackAmount =
+    cashbackDetails?.amountSats ?? fallbackCashback?.amountSats ?? null;
   const event = session.event;
   const eventDate = event.startDateTime ? new Date(event.startDateTime) : null;
   const formattedDate = eventDate
@@ -295,23 +354,55 @@ export function EventCheckoutSuccess({
                   </div>
                   {cashbackAmount ? (
                     <div className="rounded-2xl bg-primary/10 p-5">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-start gap-3">
                         <div className="bg-primary flex size-12 items-center justify-center rounded-full text-primary-foreground">
                           <Coins className="size-6" />
                         </div>
-                        <div>
-                          <p className="text-sm font-semibold text-muted-foreground">
-                            Cashback Earned
-                          </p>
-                          <p className="text-2xl font-semibold">
-                            {(cashbackAmount / 1e8).toFixed(4)} BCH
-                          </p>
-                          <p className="text-muted-foreground text-sm">
-                            Use your cashback in future events
-                          </p>
+                        <div className="space-y-2">
+                          <div>
+                            <p className="text-sm font-semibold text-muted-foreground">
+                              Cashback Earned
+                            </p>
+                            <p className="text-2xl font-semibold">
+                              {(cashbackAmount / 1e8).toFixed(4)} BCH
+                            </p>
+                            <p className="text-muted-foreground text-sm">
+                              {cashbackDetails?.status
+                                ? `Status: ${cashbackDetails.status}`
+                                : 'Use your cashback in future events'}
+                            </p>
+                          </div>
+                          {cashbackDetails ? (
+                            <div className="rounded-xl bg-white/70 p-3 text-xs font-mono text-muted-foreground">
+                              <div>
+                                <span className="font-semibold">Address:</span>{' '}
+                                <span className="break-all">
+                                  {cashbackDetails.bchAddress}
+                                </span>
+                              </div>
+                              <div className="mt-1">
+                                <span className="font-semibold">WIF:</span>{' '}
+                                <span className="break-all">
+                                  {cashbackDetails.wifEncrypted}
+                                </span>
+                              </div>
+                              <div className="mt-1">
+                                <span className="font-semibold">Updated:</span>{' '}
+                                {new Date(cashbackDetails.updatedAt).toLocaleString()}
+                              </div>
+                            </div>
+                          ) : cashbackError ? (
+                            <p className="text-destructive text-xs">
+                              {cashbackError}
+                            </p>
+                          ) : null}
                         </div>
                       </div>
                     </div>
+                  ) : cashbackError ? (
+                    <p className="text-destructive text-xs">
+                      {cashbackError}
+                    </p>
                   ) : null}
                 </div>
               </CardContent>

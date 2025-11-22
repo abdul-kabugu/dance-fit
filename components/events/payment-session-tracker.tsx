@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -36,7 +36,7 @@ interface PaymentSessionTrackerProps {
   eventIdentifier: string;
   sessionId: string;
 }
-
+//
 export function PaymentSessionTracker({
   session,
   eventIdentifier,
@@ -58,6 +58,20 @@ export function PaymentSessionTracker({
     }
     return 600;
   });
+  const ticketIssuedRef = useRef(false);
+
+  const issueTicketForSession = useCallback(async () => {
+    if (ticketIssuedRef.current) return;
+    ticketIssuedRef.current = true;
+    try {
+      await fetch(
+        `/api/payments/sessions/${encodeURIComponent(sessionId)}/issue-ticket`,
+        { method: 'POST' },
+      );
+    } catch (err) {
+      console.error('Ticket issuance failed:', err);
+    }
+  }, [sessionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,9 +97,14 @@ export function PaymentSessionTracker({
         if (cancelled) return;
         setCurrentSession(data.session);
         if (data.session.payment?.status === 'COMPLETED') {
+          await issueTicketForSession();
           setPaymentStatus('confirmed');
+          const paymentId = data.session.payment?.id;
+          const paymentQuery = paymentId
+            ? `&paymentId=${encodeURIComponent(paymentId)}`
+            : '';
           router.replace(
-            `/events/${eventIdentifier}/success?session=${data.session.id}`,
+            `/events/${eventIdentifier}/success?session=${data.session.id}${paymentQuery}`,
           );
         } else if (data.session.payment?.status === 'PENDING') {
           setPaymentStatus('detected');
@@ -114,7 +133,7 @@ export function PaymentSessionTracker({
       cancelled = true;
       clearInterval(poll);
     };
-  }, [eventIdentifier, router, sessionId, toast]);
+  }, [eventIdentifier, issueTicketForSession, router, sessionId, toast]);
 
   useEffect(() => {
     if (!currentSession.expiresAt) return;

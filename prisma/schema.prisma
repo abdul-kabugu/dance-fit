@@ -26,9 +26,9 @@ model User {
 }
 
 model Organizer {
-  id            String    @id @default(cuid())
-  userId        String    @unique
-  user          User      @relation(fields: [userId], references: [id])
+  id            String     @id @default(cuid())
+  userId        String     @unique
+  user          User       @relation(fields: [userId], references: [id])
   studioName    String?
   events        Event[]
   payments      Payment[]
@@ -43,9 +43,10 @@ model Organizer {
   bchXpub       String? // organizer HD wallet (public)
   bchXprivEnc   String? // encrypted xpriv (optional, custodial)
   bchSeedEnc    String? // encrypted seed (optional, if you store seed)
-  nextIndex     Int       @default(0) // for deriving new addresses
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  nextIndex     Int        @default(0) // for deriving new addresses
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  cashbacks     Cashback[]
 }
 
 model Artist {
@@ -246,16 +247,19 @@ model NftTicket {
 }
 
 model Cashback {
-  id         String   @id @default(cuid())
-  paymentId  String   @unique
-  privateKey String // encrypted WIF
-  address    String
-  amountSats Int
-  fundedTxId String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String         @id @default(cuid())
+  paymentId    String         @unique
+  organizerId  String?
+  wifEncrypted String         @default("no-wif-key") // encrypted WIF
+  bchAddress   String         @default("no-wallet")
+  status       CashbackStatus @default(UNCLAIMED)
+  amountSats   Int            @default(0)
+  fundedTxId   String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @default(now()) @updatedAt
 
-  payment Payment @relation(fields: [paymentId], references: [id])
+  payment   Payment    @relation(fields: [paymentId], references: [id])
+  organizer Organizer? @relation(fields: [organizerId], references: [id])
 }
 
 // Extended to persist price snapshots from the attendee checkout step.
@@ -357,4 +361,11 @@ enum CheckoutStatus {
   AWAITING_PAYMENT
   COMPLETED
   EXPIRED
+}
+
+enum CashbackStatus {
+  UNCLAIMED
+  CLAIMED
+  EXPIRED
+  FAILED
 }

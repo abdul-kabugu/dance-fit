@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { TicketPurchasePanel } from '@/components/events/ticket-purchase-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -85,6 +86,10 @@ export default async function EventDetailsPage({
       ? Math.min(...ticketTypes.map((ticket: any) => ticket.priceCents ?? 0)) /
         100
       : null;
+  const salesStartLabel = startDate
+    ? startDate.toLocaleDateString()
+    : 'soon';
+  const checkoutPath = `/events/${event.slug ?? event.id}/checkout`;
   const featuredArtists =
     event.artists?.map((assignment: any) => ({
       id: assignment.artistId,
@@ -278,83 +283,12 @@ export default async function EventDetailsPage({
           {/* Sidebar - Ticket Purchase */}
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-4">
-              <Card>
-                <CardContent className="space-y-6 p-6">
-                  <div>
-                    <p className="text-muted-foreground text-sm">
-                      Starting from
-                    </p>
-                    <p className="text-primary text-3xl font-bold">
-                      {minimumPrice && minimumPrice > 0
-                        ? `$${minimumPrice.toFixed(2)}`
-                        : 'Free'}
-                    </p>
-                  </div>
-
-                  <Separator />
-
-                  {ticketTypes.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="font-semibold">Available Tickets</h3>
-                      {ticketTypes.map((ticket: any) => (
-                        <div
-                          key={ticket.id}
-                          className="border-border bg-muted/30 space-y-1 rounded-lg border p-3"
-                        >
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium">{ticket.name}</p>
-                            <p className="text-sm font-semibold">
-                              {ticket.priceCents === 0
-                                ? 'Free'
-                                : `$${(ticket.priceCents / 100).toFixed(2)}`}
-                            </p>
-                          </div>
-                          {ticket.description && (
-                            <p className="text-muted-foreground text-xs">
-                              {ticket.description}
-                            </p>
-                          )}
-                          {ticket.isEarlyBird && (
-                            <Badge variant="secondary" className="text-xs">
-                              Early Bird
-                            </Badge>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <Button size="lg" className="w-full" asChild>
-                    <Link href={`/events/${event.slug ?? event.id}/checkout`}>
-                      Get Tickets
-                    </Link>
-                  </Button>
-
-                  <p className="text-muted-foreground text-center text-xs">
-                    Sales start{' '}
-                    {startDate ? startDate.toLocaleDateString() : 'soon'}
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* Mobile Sticky CTA */}
-              <div className="border-border bg-background fixed right-0 bottom-0 left-0 z-20 border-t p-4 lg:hidden">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-muted-foreground text-xs">From</p>
-                    <p className="text-primary text-xl font-bold">
-                      {minimumPrice && minimumPrice > 0
-                        ? `$${minimumPrice.toFixed(2)}`
-                        : 'Free'}
-                    </p>
-                  </div>
-                  <Button size="lg" className="flex-1" asChild>
-                    <Link href={`/events/${event.slug ?? event.id}/checkout`}>
-                      Get Tickets
-                    </Link>
-                  </Button>
-                </div>
-              </div>
+              <TicketPurchasePanel
+                ticketTypes={ticketTypes}
+                minimumPrice={minimumPrice}
+                checkoutPath={checkoutPath}
+                salesStartLabel={salesStartLabel}
+              />
             </div>
           </div>
         </div>

@@ -9,12 +9,10 @@ import {
 } from '@prisma/client';
 
 import { ApiError, handleApiError, respond } from '@/lib/api-helpers';
+import { calculateCashbackRewardSats } from '@/lib/payments/cashback';
 import prisma from '@/lib/prisma';
 import { issueTicket } from '@/lib/services/tickets';
 import { bchWebhookSchema } from '@/lib/validators';
-
-const CASHBACK_PERCENT =
-  Number.parseFloat(process.env.CASHBACK_PERCENT ?? '5') / 100;
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,9 +48,7 @@ export async function POST(request: NextRequest) {
       return respond({ ok: true });
     }
 
-    const cashbackAmount = Math.round(
-      payload.amountSats * Math.max(CASHBACK_PERCENT, 0),
-    );
+    const cashbackAmount = calculateCashbackRewardSats(payload.amountSats);
 
     const result = await prisma.$transaction(async (tx) => {
       const payment = await tx.payment.update({

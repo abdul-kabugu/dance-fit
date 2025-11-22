@@ -7,14 +7,14 @@ import { getCheckoutSession } from '@/lib/server-api';
 
 interface SuccessPageProps {
   params: { id: string };
-  searchParams: { session?: string };
+  searchParams: { session?: string; paymentId?: string };
 }
 
 export default async function SuccessPage({
   params,
   searchParams,
 }: SuccessPageProps) {
-  const { session: sessionId } = await searchParams;
+  const { session: sessionId, paymentId } = await searchParams;
   const { id } = await params;
   if (!sessionId) {
     redirect(`/events/${id}`);
@@ -38,5 +38,11 @@ export default async function SuccessPage({
     );
   }
 
-  return <EventCheckoutSuccess session={session} eventIdentifier={id} />;
+  return (
+    <EventCheckoutSuccess
+      session={session}
+      eventIdentifier={id}
+      paymentId={paymentId ?? session.payment?.id}
+    />
+  );
 }

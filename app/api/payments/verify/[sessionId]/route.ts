@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 
 import {
   fetchBalance,
@@ -6,8 +6,13 @@ import {
   fetchUnspentTransactionOutputs,
   initializeElectrumClient,
 } from '@electrum-cash/protocol';
+import { PaymentStatus } from '@prisma/client';
 
 import { ApiError, handleApiError, respond } from '@/lib/api-helpers';
+import {
+  calculateCashbackRewardSats,
+  createCashbackStamp,
+} from '@/lib/payments/cashback';
 import prisma from '@/lib/prisma';
 
 interface RouteContext {
@@ -21,9 +26,12 @@ function usdCentsToSatoshis(cents: number, rateUsdPerBch = 250) {
   return Math.floor((usd / rateUsdPerBch) * 1e8);
 }
 
+// Simulate verification delay:
+const AUTO_CONFIRM_SECONDS = 13;
 export async function GET(_req: NextRequest, { params }: RouteContext) {
   try {
-    const { sessionId } = params;
+    const { sessionId } = await params;
+    console.log('The session Id', sessionId);
 
     // 1. Fetch checkout session
     const session = await prisma.checkoutSession.findUnique({
@@ -32,7 +40,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
         payment: true,
       },
     });
-
+    //
     if (!session) throw new ApiError(404, 'Checkout session not found.');
 
     const { bchAddress, totalCents, payment } = session;
@@ -57,22 +65,48 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
     const receivedSatoshis = balance.confirmed + balance.unconfirmed;
     const isPaid = receivedSatoshis >= expectedSatoshis;
 
-    // 5. If paid → update DB
-    if (isPaid && payment) {
-      // Update Payment record
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: 'COMPLETED',
-          bchAmountSats: receivedSatoshis,
-          txHash: utxos[0]?.tx_hash ?? null,
-        },
-      });
+    // -----------SIMULATION---------
 
-      // Update CheckoutSession record
-      await prisma.checkoutSession.update({
-        where: { id: session.id },
-        data: { status: 'COMPLETED' },
+    // Simulate a delay before confirming payment
+    const createdAt = session.createdAt.getTime();
+    const now = Date.now();
+
+    const secondsPassed = Math.floor((now - createdAt) / 1000);
+
+    const shouldConfirm = secondsPassed >= AUTO_CONFIRM_SECONDS;
+    // 5. If paid → update DB
+    // isPaid && payment &&
+    if (shouldConfirm && payment?.status !== PaymentStatus.COMPLETED) {
+      await prisma.$transaction(async (tx) => {
+        const updatedPayment = await tx.payment.update({
+          where: { id: payment?.id },
+          data: {
+            status: PaymentStatus.COMPLETED,
+            bchAmountSats: receivedSatoshis,
+            txHash: utxos[0]?.tx_hash ?? null,
+          },
+          select: {
+            id: true,
+            organizerId: true,
+          },
+        });
+
+        await tx.checkoutSession.update({
+          where: { id: session.id },
+          data: { status: 'COMPLETED' },
+        });
+
+        const cashbackAmount = 12; //calculateCashbackRewardSats(receivedSatoshis);
+        if (cashbackAmount > 0) {
+          await createCashbackStamp(
+            {
+              paymentId: updatedPayment.id,
+              amountSats: BigInt(cashbackAmount),
+              organizerId: updatedPayment.organizerId,
+            },
+            tx,
+          );
+        }
       });
     }
 

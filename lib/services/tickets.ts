@@ -1,6 +1,7 @@
 import { Prisma, TicketStatus } from '@prisma/client';
 
 import { ApiError } from '@/lib/api-helpers';
+import { createCashbackStamp } from '@/lib/payments/cashback';
 import prisma from '@/lib/prisma';
 import { generateReference } from '@/lib/strings';
 
@@ -94,12 +95,14 @@ export async function issueTicket(
         'Cashback issuance requires a linked payment record.',
       );
     }
-    await client.cashback.create({
-      data: {
+    await createCashbackStamp(
+      {
         paymentId: params.paymentId,
-        amountSats: params.cashbackAmountSats,
+        amountSats: BigInt(params.cashbackAmountSats),
+        organizerId: params.organizerId,
       },
-    });
+      tx,
+    );
   }
 
   return client.ticket.findUnique({

@@ -19,7 +19,7 @@ const _geist = Geist({ subsets: ['latin'] });
 const _geistMono = Geist_Mono({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'DanceFit - Organizer Dashboard',
+  title: 'DancePulse - Organizer Dashboard',
   description:
     'Manage your dance events, track revenue, and engage with your community',
   generator: 'v0.app',

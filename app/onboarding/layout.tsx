@@ -3,8 +3,8 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Welcome - DanceFit',
-  description: 'Complete your DanceFit profile',
+  title: 'Welcome - DancePulse',
+  description: 'Complete your DancePulse profile',
 };
 
 export default function OnboardingLayout({

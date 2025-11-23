@@ -64,35 +64,33 @@ export function TicketPurchasePanel({
               {ticketTypes.map((ticket) => {
                 const selected = selectedTicketId === ticket.id;
                 return (
-                  <>
-                    <div
-                      key={ticket.id}
-                      className={cn(
-                        'border-border bg-muted/30 space-y-1 rounded-lg border p-3',
-                        selected && 'border-primary ring-primary ring-1',
-                      )}
-                      onClick={() => setSelectedTicketId(ticket.id)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium">{ticket.name}</p>
-                        <p className="text-sm font-semibold">
-                          {ticket.priceCents === 0
-                            ? 'Free'
-                            : `$${(ticket.priceCents / 100).toFixed(2)}`}
-                        </p>
-                      </div>
-                      {ticket.description && (
-                        <p className="text-muted-foreground text-xs">
-                          {ticket.description}
-                        </p>
-                      )}
-                      {ticket.isEarlyBird && (
-                        <Badge variant="secondary" className="text-xs">
-                          Early Bird
-                        </Badge>
-                      )}
+                  <div
+                    key={ticket.id}
+                    className={cn(
+                      'border-border bg-muted/30 space-y-1 rounded-lg border p-3',
+                      selected && 'border-primary ring-primary ring-1',
+                    )}
+                    onClick={() => setSelectedTicketId(ticket.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">{ticket.name}</p>
+                      <p className="text-sm font-semibold">
+                        {ticket.priceCents === 0
+                          ? 'Free'
+                          : `$${(ticket.priceCents / 100).toFixed(2)}`}
+                      </p>
                     </div>
-                  </>
+                    {ticket.description && (
+                      <p className="text-muted-foreground text-xs">
+                        {ticket.description}
+                      </p>
+                    )}
+                    {ticket.isEarlyBird && (
+                      <Badge variant="secondary" className="text-xs">
+                        Early Bird
+                      </Badge>
+                    )}
+                  </div>
                 );
               })}
             </div>

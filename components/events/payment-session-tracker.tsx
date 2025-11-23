@@ -308,7 +308,7 @@ export function PaymentSessionTracker({
                   </span>
                 </div>
                 <span className="hidden text-xl font-semibold sm:inline">
-                  DanceFit
+                  DancePulse
                 </span>
               </div>
             </Link>

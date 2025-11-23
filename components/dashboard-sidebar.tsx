@@ -58,7 +58,7 @@ export function DashboardSidebar({ currentPath = '' }: DashboardSidebarProps) {
             <span className="text-primary-foreground text-lg font-bold">D</span>
           </div>
           <span className="text-sidebar-foreground text-lg font-semibold">
-            DanceFit
+            DancePulse
           </span>
         </Link>
       </div>

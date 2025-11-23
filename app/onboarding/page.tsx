@@ -201,7 +201,7 @@ export default function OnboardingPage() {
     if (!selectedRole) {
       toast({
         title: 'Select a role',
-        description: 'Choose how you plan to use DanceFit.',
+        description: 'Choose how you plan to use DancePulse.',
       });
       return;
     }
@@ -243,7 +243,7 @@ export default function OnboardingPage() {
 
       toast({
         title: 'Profile created!',
-        description: `Welcome to DanceFit as ${selectedRole}!`,
+        description: `Welcome to DancePulse as ${selectedRole}!`,
       });
       router.push('/dashboard');
     } catch (error) {
@@ -360,7 +360,7 @@ export default function OnboardingPage() {
                   <Label htmlFor="studioName">Studio or Brand Name</Label>
                   <Input
                     id="studioName"
-                    placeholder="DanceFit Collective"
+                    placeholder="DancePulse Collective"
                     value={organizerProfile.studioName}
                     onChange={(e) =>
                       setOrganizerProfile({
@@ -452,12 +452,12 @@ export default function OnboardingPage() {
             </div>
           </div>
           <h1 className="mb-2 text-3xl font-bold text-balance">
-            Welcome to DanceFit
+            Welcome to DancePulse
           </h1>
           <p className="text-muted-foreground text-lg">
             {selectedRole
               ? `Complete your ${selectedRole} profile`
-              : 'Choose how you want to use DanceFit'}
+              : 'Choose how you want to use DancePulse'}
           </p>
         </div>
 

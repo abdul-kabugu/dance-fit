@@ -150,7 +150,7 @@ function createSocialLinks(handle: string) {
 }
 
 function randomPhone() {
-  return faker.phone.number('+1 ###-###-####');
+  return faker.phone.number({ style: 'national' });
 }
 
 function randomXpub() {

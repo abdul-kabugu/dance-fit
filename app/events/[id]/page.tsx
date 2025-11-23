@@ -10,8 +10,8 @@ import {
   Users,
 } from 'lucide-react';
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { TicketPurchasePanel } from '@/components/events/ticket-purchase-panel';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -86,9 +86,7 @@ export default async function EventDetailsPage({
       ? Math.min(...ticketTypes.map((ticket: any) => ticket.priceCents ?? 0)) /
         100
       : null;
-  const salesStartLabel = startDate
-    ? startDate.toLocaleDateString()
-    : 'soon';
+  const salesStartLabel = startDate ? startDate.toLocaleDateString() : 'soon';
   const checkoutPath = `/events/${event.slug ?? event.id}/checkout`;
   const featuredArtists =
     event.artists?.map((assignment: any) => ({
@@ -118,7 +116,7 @@ export default async function EventDetailsPage({
                   </span>
                 </div>
                 <span className="hidden text-xl font-semibold sm:inline">
-                  DanceFit
+                  DancePulse
                 </span>
               </div>
             </Link>

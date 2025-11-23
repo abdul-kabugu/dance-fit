@@ -21,6 +21,15 @@ export default async function SuccessPage({
   }
 
   const session = await getCheckoutSession(sessionId);
+  const cashbackPaymentId = paymentId ?? session?.payment?.id;
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+  const response = await fetch(
+    `${baseUrl}/api/payments/cashback/${encodeURIComponent(cashbackPaymentId!)}`,
+    { cache: 'no-store' },
+  );
+  const cashback = await response.json();
+
+  console.log('cashback', cashback.cashback);
   if (!session) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -43,6 +52,7 @@ export default async function SuccessPage({
       session={session}
       eventIdentifier={id}
       paymentId={paymentId ?? session.payment?.id}
+      cashbackDetails={cashback.cashback}
     />
   );
 }

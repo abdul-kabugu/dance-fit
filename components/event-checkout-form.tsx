@@ -46,9 +46,7 @@ export function EventCheckoutForm({
     }
     return ticketTypes[0] ?? null;
   }, [ticketTypes, preselectedTicketId]);
-  const [selectedTicket, setSelectedTicket] = useState(
-    initialTicket ?? null,
-  );
+  const [selectedTicket, setSelectedTicket] = useState(initialTicket ?? null);
   useEffect(() => {
     setSelectedTicket(initialTicket ?? null);
   }, [initialTicket]);
@@ -85,8 +83,7 @@ export function EventCheckoutForm({
           .join(', ')
       : event.onlineUrl;
   const featuredArtists =
-    event.artists?.map((assignment) => assignment.artist?.user?.name) ??
-    [];
+    event.artists?.map((assignment) => assignment.artist?.user?.name) ?? [];
 
   const ticketPriceLabel = useMemo(() => {
     if (!selectedTicket) return 'Free';
@@ -315,7 +312,7 @@ export function EventCheckoutForm({
                     size="lg"
                     className="w-full"
                     onClick={handleContinue}
-                    disabled={submitting}
+                    disabled={submitting || !email || !fullName}
                   >
                     {submitting ? 'Processing...' : 'Continue to Payment'}
                   </Button>
@@ -407,7 +404,7 @@ export function EventCheckoutForm({
                   </CardContent>
                 </Card>
 
-                <div className="mt-4 rounded-2xl bg-card p-4 text-sm">
+                <div className="bg-card mt-4 hidden rounded-2xl p-4 text-sm">
                   <p className="font-semibold">Why register now?</p>
                   <ul className="text-muted-foreground mt-2 space-y-1">
                     <li>• Secure your spot before tickets sell out</li>

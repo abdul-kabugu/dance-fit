@@ -28,66 +28,49 @@ function usdCentsToSatoshis(cents: number, rateUsdPerBch = 250) {
 
 // Simulate verification delay:
 const AUTO_CONFIRM_SECONDS = 13;
+
 export async function GET(_req: NextRequest, { params }: RouteContext) {
   try {
     const { sessionId } = await params;
-    console.log('The session Id', sessionId);
 
-    // 1. Fetch checkout session
     const session = await prisma.checkoutSession.findUnique({
       where: { id: sessionId },
-      include: {
-        payment: true,
-      },
+      include: { payment: true },
     });
-    //
-    if (!session) throw new ApiError(404, 'Checkout session not found.');
 
-    const { bchAddress, totalCents, payment } = session;
+    if (!session) throw new ApiError(404, 'Session not found');
 
-    if (!bchAddress)
-      throw new ApiError(400, 'Missing BCH address for session.');
+    const { payment, bchAddress, totalCents } = session;
 
-    // 2. Convert expected fiat price → BCH amount
     const expectedSatoshis = usdCentsToSatoshis(totalCents);
 
-    // 3. Connect to Electrum server
-    const electrum = await initializeElectrumClient(
-      'DanceFit Payment Verify',
+    // 🔹 Electrum calls OUTSIDE transaction (safe)
+    /*const electrum = await initializeElectrumClient(
+      'payments',
       'bch.imaginary.cash',
     );
 
-    // 4. Query Electrum: balance, UTXOs, history
-    const balance = await fetchBalance(electrum, bchAddress);
-    const utxos = await fetchUnspentTransactionOutputs(electrum, bchAddress);
-    const history = await fetchHistory(electrum, bchAddress);
+    const balance = await fetchBalance(electrum, bchAddress!);
+    const utxos = await fetchUnspentTransactionOutputs(electrum, bchAddress!);
 
-    const receivedSatoshis = balance.confirmed + balance.unconfirmed;
-    const isPaid = receivedSatoshis >= expectedSatoshis;
+    const receivedSatoshis = balance.confirmed + balance.unconfirmed;*/
 
-    // -----------SIMULATION---------
-
-    // Simulate a delay before confirming payment
+    // 🔸 Simulation logic
     const createdAt = session.createdAt.getTime();
-    const now = Date.now();
-
-    const secondsPassed = Math.floor((now - createdAt) / 1000);
-
+    const secondsPassed = Math.floor((Date.now() - createdAt) / 1000);
     const shouldConfirm = secondsPassed >= AUTO_CONFIRM_SECONDS;
-    // 5. If paid → update DB
-    // isPaid && payment &&
+
+    let cashback = null;
+
     if (shouldConfirm && payment?.status !== PaymentStatus.COMPLETED) {
-      await prisma.$transaction(async (tx) => {
+      // 🔹 Short fast transaction (no async inside!)
+      const updated = await prisma.$transaction(async (tx) => {
         const updatedPayment = await tx.payment.update({
-          where: { id: payment?.id },
+          where: { id: payment!.id },
           data: {
             status: PaymentStatus.COMPLETED,
-            bchAmountSats: receivedSatoshis,
-            txHash: utxos[0]?.tx_hash ?? null,
-          },
-          select: {
-            id: true,
-            organizerId: true,
+            bchAmountSats: 20, //receivedSatoshis,
+            //txHash: 'yyyy', //utxos[0]?.tx_hash ?? null,
           },
         });
 
@@ -96,29 +79,25 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
           data: { status: 'COMPLETED' },
         });
 
-        const cashbackAmount = 12; //calculateCashbackRewardSats(receivedSatoshis);
-        if (cashbackAmount > 0) {
-          await createCashbackStamp(
-            {
-              paymentId: updatedPayment.id,
-              amountSats: BigInt(cashbackAmount),
-              organizerId: updatedPayment.organizerId,
-            },
-            tx,
-          );
-        }
+        return updatedPayment;
+      });
+
+      // 🔹 Cashback AFTER transaction (safe)
+      cashback = await createCashbackStamp({
+        paymentId: updated.id,
+        amountSats: BigInt(12),
+        organizerId: updated.organizerId,
       });
     }
 
     return respond({
       sessionId,
-      bchAddress,
       expectedSatoshis,
-      receivedSatoshis,
-      status: isPaid ? 'COMPLETED' : 'PENDING',
-      balance,
-      utxos,
-      history,
+      receivedSatoshis: 20,
+      status: shouldConfirm || 30 >= expectedSatoshis ? 'COMPLETED' : 'PENDING',
+      // balance,
+      //utxos,
+      cashback,
     });
   } catch (err) {
     return handleApiError(err);

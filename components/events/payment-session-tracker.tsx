@@ -14,6 +14,7 @@ import {
   MapPin,
   User,
 } from 'lucide-react';
+import QRCode from 'qrcode';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,8 +29,14 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import type { PaymentSessionDetail } from '@/lib/event-types';
+import { formatBchSmart, getBchQuote } from '@/lib/price-converter';
 
 type PaymentStatus = 'waiting' | 'detected' | 'confirmed';
+type QuoteResponse = {
+  bch: number;
+  sats: number;
+  usdPerBch: number;
+};
 
 interface PaymentSessionTrackerProps {
   session: PaymentSessionDetail;
@@ -50,7 +57,14 @@ export function PaymentSessionTracker({
     if (session.payment?.status === 'PENDING') return 'detected';
     return 'waiting';
   });
+  const [quuoteRes, setquuoteRes] = useState<QuoteResponse>({
+    bch: 0,
+    usdPerBch: 0,
+    sats: 0,
+  });
   const [copied, setCopied] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [isGenerating, setIsGenerating] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(() => {
     if (session.expiresAt) {
       const diff = new Date(session.expiresAt).getTime() - Date.now();
@@ -58,6 +72,24 @@ export function PaymentSessionTracker({
     }
     return 600;
   });
+
+  // Generate QR code
+  const generateQRCode = async (paywallet: string) => {
+    try {
+      const qrUrl = await QRCode.toDataURL(paywallet, {
+        width: 320,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#ffffff',
+        },
+      });
+      setQrCodeUrl(qrUrl);
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+    }
+  };
+
   const ticketIssuedRef = useRef(false);
 
   const issueTicketForSession = useCallback(async () => {
@@ -143,14 +175,20 @@ export function PaymentSessionTracker({
     return () => clearInterval(interval);
   }, [currentSession.expiresAt]);
 
+  const DISCOUNT_PERCENT = 0.1; // 10%
   const ticketPrice = useMemo(() => {
     return currentSession.ticketType.priceCents / 100;
   }, [currentSession.ticketType.priceCents]);
 
-  const bchAmount = useMemo(() => {
-    if (!currentSession.payment?.bchAmountSats) return '0.000000';
-    return (currentSession.payment.bchAmountSats / 1e8).toFixed(6);
-  }, [currentSession.payment?.bchAmountSats]);
+  const amountSaved = useMemo(
+    () => ticketPrice * DISCOUNT_PERCENT,
+    [ticketPrice],
+  );
+
+  const discountedPriceO = useMemo(
+    () => ticketPrice - amountSaved,
+    [ticketPrice, amountSaved],
+  );
 
   const bchAddress =
     currentSession.payment?.bchAddress ?? currentSession.bchAddress ?? '';
@@ -163,6 +201,17 @@ export function PaymentSessionTracker({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // generate QR code
+
+  useEffect(() => {
+    //setIsGenerating(true);
+    const handleAutoGnerate = async () => {
+      const quote = await getBchQuote(ticketPrice);
+      setquuoteRes(quote);
+      await generateQRCode(bchAddress);
+    };
+    handleAutoGnerate();
+  }, [bchAddress]);
   const copyToClipboard = async () => {
     if (!bchAddress) return;
     try {
@@ -182,22 +231,33 @@ export function PaymentSessionTracker({
     }
   };
 
-  const statusConfig = (() => {
+  const getStatusConfig = () => {
     switch (paymentStatus) {
       case 'waiting':
-        return { icon: '⭕', text: 'Waiting for payment...' };
+        return {
+          icon: '⭕',
+          text: 'Waiting for payment...',
+          color: 'text-muted-foreground',
+          bgColor: 'bg-muted',
+        };
       case 'detected':
         return {
           icon: '🟡',
           text: 'Payment detected, awaiting confirmation...',
+          color: 'text-yellow-600',
+          bgColor: 'bg-yellow-50 dark:bg-yellow-950',
         };
       case 'confirmed':
         return {
           icon: '🟢',
-          text: 'Payment confirmed! Redirecting...',
+          text: 'Payment confirmed!',
+          color: 'text-green-600',
+          bgColor: 'bg-green-50 dark:bg-green-950',
         };
     }
-  })();
+  };
+
+  const statusConfig = getStatusConfig();
 
   const event = currentSession.event;
   const eventStart = event.startDateTime ? new Date(event.startDateTime) : null;
@@ -259,162 +319,270 @@ export function PaymentSessionTracker({
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
-        <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle className="text-2xl">
-                Complete Your BCH Payment
-              </CardTitle>
-              <CardDescription>
-                Send the exact amount to the address below before the timer
-                expires.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="rounded-2xl border p-5">
-                <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-muted-foreground text-sm font-medium">
-                      Amount Due
-                    </p>
-                    <p className="text-4xl font-bold tracking-tight">
-                      {bchAmount} BCH
-                    </p>
-                    <p className="text-muted-foreground text-sm">
-                      ≈ ${ticketPrice.toFixed(2)} USD
-                    </p>
+      {/* New component UI */}
+
+      <div className="mx-auto max-w-4xl">
+        {/* Page Title */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight text-balance">
+            Pay with Bitcoin Cash (BCH)
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            Scan the QR code below to complete your payment
+          </p>
+        </div>
+
+        {/* Two Column Layout */}
+        <div className="grid gap-8 lg:grid-cols-3">
+          {/* Left Column - Payment */}
+          <div className="space-y-6 lg:col-span-2">
+            {/* BCH Payment Card */}
+            <Card className="overflow-hidden rounded-2xl border-2 border-green-500/20 shadow-lg shadow-green-500/10">
+              <CardHeader className="bg-gradient-to-br from-green-500/5 to-transparent pb-6">
+                <CardTitle className="text-2xl">
+                  Complete Your Payment
+                </CardTitle>
+                <CardDescription>
+                  Send the exact amount to the address below
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6 p-6">
+                {/* Amount to Pay */}
+                <div className="bg-muted/50 space-y-3 rounded-xl p-6">
+                  <p className="text-muted-foreground text-sm font-medium">
+                    Amount to Pay
+                  </p>
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-4xl font-bold text-green-600">
+                      {formatBchSmart(quuoteRes.bch)} BCH
+                    </span>
                   </div>
-                  <div className="bg-muted/50 rounded-xl p-3 text-center">
-                    <p className="text-muted-foreground text-sm font-medium">
-                      Session Expires In
-                    </p>
-                    <p className="text-2xl font-semibold">
-                      {formatTime(timeRemaining)}
-                    </p>
-                    <Progress value={(timeRemaining / 600) * 100} />
-                  </div>
+                  <p className="text-muted-foreground text-sm">
+                    ≈ ${discountedPriceO.toFixed(2)} USD
+                  </p>
                 </div>
 
-                <div className="space-y-3">
-                  <p className="text-muted-foreground text-sm font-medium">
-                    Payment Address
-                  </p>
-                  <div className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="font-mono text-sm">
-                      {truncatedAddress || '---'}
+                <Separator />
+
+                {/* QR Code */}
+                <div className="flex flex-col items-center space-y-4">
+                  <div className="rounded-2xl bg-white shadow-xl">
+                    <div className="size-64 rounded-xl bg-gradient-to-br from-green-50 to-green-100">
+                      {qrCodeUrl && (
+                        <img
+                          src={qrCodeUrl}
+                          alt="QR Code"
+                          className="h-full w-full rounded-xl border-2"
+                        />
+                      )}
                     </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" onClick={copyToClipboard}>
-                        <Copy className="mr-2 size-4" />
-                        {copied ? 'Copied' : 'Copy Address'}
+                  </div>
+
+                  {/* BCH Address */}
+                  <div className="w-full space-y-2">
+                    <p className="text-muted-foreground text-center text-xs font-medium tracking-wide uppercase">
+                      BCH Address
+                    </p>
+                    <div className="border-border bg-muted/30 flex items-center gap-2 rounded-xl border p-3">
+                      <code className="flex-1 text-center font-mono text-xs">
+                        {truncatedAddress}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 shrink-0"
+                        onClick={copyToClipboard}
+                      >
+                        {copied ? (
+                          <Check className="size-4 text-green-600" />
+                        ) : (
+                          <Copy className="size-4" />
+                        )}
                       </Button>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-muted/50 rounded-xl p-4">
-                  <p className="text-muted-foreground text-sm font-semibold">
-                    Payment Status
-                  </p>
-                  <div className="mt-2 flex items-center gap-2 text-lg font-semibold">
-                    <span>{statusConfig.icon}</span>
-                    <span>{statusConfig.text}</span>
-                  </div>
-                </div>
+                <Separator />
 
-                <div className="text-muted-foreground grid gap-3 text-sm">
-                  <p>1. Open your BCH wallet.</p>
-                  <p>
-                    2. Send <strong>{bchAmount} BCH</strong> to the address
-                    above.
-                  </p>
-                  <p>3. Stay on this page while we detect your payment.</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle>Event Summary</CardTitle>
-              <CardDescription>
-                Review the details before completing your payment.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-xl border p-4">
-                <div className="space-y-1">
-                  <p className="text-muted-foreground text-sm font-medium">
-                    Event
-                  </p>
-                  <h2 className="text-xl font-semibold">{event.title}</h2>
-                  <p className="text-muted-foreground text-sm">
-                    {event.summary}
-                  </p>
-                </div>
-                <Separator className="my-4" />
-                <div className="space-y-3">
-                  <div className="flex gap-3 text-sm">
-                    <Calendar className="text-muted-foreground size-4" />
-                    <div>
-                      <p className="font-medium">Date &amp; Time</p>
-                      <p className="text-muted-foreground">
-                        {formattedDate} — {formattedTime}
+                {/* Payment Status */}
+                <div className={`rounded-xl ${statusConfig.bgColor} p-4`}>
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{statusConfig.icon}</span>
+                    <div className="flex-1">
+                      <p className={`font-semibold ${statusConfig.color}`}>
+                        {statusConfig.text}
                       </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-3 text-sm">
-                    <MapPin className="text-muted-foreground size-4" />
-                    <div>
-                      <p className="font-medium">Location</p>
-                      <p className="text-muted-foreground">{eventLocation}</p>
-                      {eventAddress && (
-                        <p className="text-muted-foreground">{eventAddress}</p>
+                      {paymentStatus === 'detected' && (
+                        <div className="mt-2">
+                          <Progress value={60} className="h-2" />
+                        </div>
+                      )}
+                      {paymentStatus === 'confirmed' && (
+                        <p className="text-muted-foreground mt-1 text-sm">
+                          Redirecting to confirmation page...
+                        </p>
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-3 text-sm">
-                    <User className="text-muted-foreground size-4" />
+                </div>
+
+                {/* Countdown Timer */}
+                {timeRemaining > 0 && paymentStatus === 'waiting' && (
+                  <div className="flex items-center justify-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/5 px-4 py-3">
+                    <Clock className="size-4 text-orange-600" />
+                    <p className="text-sm font-medium text-orange-600">
+                      Expires in {formatTime(timeRemaining)}
+                    </p>
+                  </div>
+                )}
+
+                {/* Auto-redirect Note */}
+                <div className="text-center">
+                  <p className="text-muted-foreground text-sm">
+                    You will be redirected automatically once payment is
+                    confirmed
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Benefits Reminder */}
+            <Card className="hidden rounded-2xl border-green-500/20 bg-green-500/5">
+              <CardContent className="p-6">
+                <h3 className="mb-3 font-semibold">Why pay with BCH?</h3>
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center gap-2">
+                    <div className="size-1.5 rounded-full bg-green-500" />
+                    <span>10% instant discount applied</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="size-1.5 rounded-full bg-green-500" />
+                    <span>Earn BCH cashback via CashStamp</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="size-1.5 rounded-full bg-green-500" />
+                    <span>Fast confirmation times</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <div className="size-1.5 rounded-full bg-green-500" />
+                    <span>No payment processor fees</span>
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Column - Event Summary */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-24">
+              <Card className="rounded-2xl">
+                <CardHeader>
+                  <CardTitle>Event Summary</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Event Banner */}
+                  <div className="overflow-hidden rounded-xl">
+                    <img
+                      src={session.event.bannerUrl || '/placeholder.svg'}
+                      alt={event.title}
+                      className="aspect-video w-full object-cover"
+                    />
+                  </div>
+
+                  {/* Event Details */}
+                  <div className="space-y-3">
                     <div>
-                      <p className="font-medium">Artists</p>
-                      <p className="text-muted-foreground">
-                        {featuredArtists.length
-                          ? featuredArtists.join(', ')
-                          : 'Lineup TBA'}
-                      </p>
+                      <Badge variant="secondary" className="mb-2 text-xs">
+                        {event.category}
+                      </Badge>
+                      <h3 className="text-lg leading-tight font-semibold text-balance">
+                        {event.title}
+                      </h3>
+                    </div>
+                    <Separator />
+                    {/* Date & Time */}
+                    <div className="flex items-start gap-3">
+                      <Calendar className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium">Date & Time</p>
+                        <p className="text-muted-foreground text-xs">
+                          {formattedDate}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          {formattedTime}
+                        </p>
+                      </div>
+                    </div>
+                    <Separator />
+                    {/* Location */}
+                    <div className="flex items-start gap-3">
+                      <MapPin className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium">Location</p>
+                        <p className="text-muted-foreground text-xs">
+                          {eventLocation}
+                        </p>
+                      </div>
+                    </div>
+                    {/* Artists */}
+                    {event.artists && event.artists.length > 0 && (
+                      <>
+                        <Separator />
+                        <div className="flex gap-3 text-sm">
+                          <User className="text-muted-foreground size-4" />
+                          <div>
+                            <p className="font-medium">Featured Artists</p>
+                            <p className="text-muted-foreground">
+                              {featuredArtists.length
+                                ? featuredArtists.join(', ')
+                                : 'Lineup TBA'}
+                            </p>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    <Separator />
+                    {currentSession.ticketType.isEarlyBird && ' (Early Bird)'}
+                    {/* Ticket & Price */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          Ticket Type
+                        </span>
+                        <span className="font-medium">
+                          {currentSession.ticketType.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          Original Price
+                        </span>
+                        <span className="line-through">
+                          ${ticketPrice.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          BCH Discount (10%)
+                        </span>
+                        <span className="text-green-600">
+                          -${amountSaved.toFixed(2)}
+                        </span>
+                      </div>
+                      <Separator />
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">Total</span>
+                        <span className="text-xl font-bold text-green-600">
+                          ${discountedPriceO.toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-
-              <div className="bg-muted/40 rounded-xl p-4">
-                <p className="text-muted-foreground text-sm font-medium">
-                  Ticket Details
-                </p>
-                <div className="mt-2 flex items-center justify-between text-sm">
-                  <span>{currentSession.ticketType.name}</span>
-                  <span>
-                    ${ticketPrice.toFixed(2)}
-                    {currentSession.ticketType.isEarlyBird && ' (Early Bird)'}
-                  </span>
-                </div>
-                <div className="text-muted-foreground mt-2 flex items-center justify-between text-sm">
-                  <span>Attendee</span>
-                  <span>{currentSession.attendeeName}</span>
-                </div>
-                <div className="text-muted-foreground flex items-center justify-between text-sm">
-                  <span>Email</span>
-                  <span>{currentSession.attendeeEmail}</span>
-                </div>
-              </div>
-
-              <div className="bg-muted/40 text-muted-foreground rounded-xl p-4 text-sm">
-                <p className="font-semibold">Need help?</p>
-                <p>Contact support@dancefit.com for assistance.</p>
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
       </div>
     </div>

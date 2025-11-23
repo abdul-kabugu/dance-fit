@@ -10,6 +10,7 @@ import {
   Calendar,
   ChevronLeft,
   CreditCard,
+  Loader2,
   MapPin,
   Sparkles,
   User,
@@ -48,11 +49,22 @@ export function EventPaymentSelection({
   const { toast } = useToast();
   const [processing, setProcessing] = useState(false);
   const [showComingSoonModal, setShowComingSoonModal] = useState(false);
+  const DISCOUNT_PERCENT = 0.1; // 10%
 
   const eventLink = `/events/${session.event.slug ?? session.event.id}`;
   const ticketPrice = useMemo(
     () => session.totalCents / 100,
     [session.totalCents],
+  );
+
+  const amountSaved = useMemo(
+    () => ticketPrice * DISCOUNT_PERCENT,
+    [ticketPrice],
+  );
+
+  const discountedPriceO = useMemo(
+    () => ticketPrice - amountSaved,
+    [ticketPrice, amountSaved],
   );
   const discountedPrice = useMemo(() => {
     const total = Math.max(session.totalCents - session.discountCents, 0);
@@ -173,7 +185,7 @@ export function EventPaymentSelection({
               </div>
             </Link>
             <Badge variant="outline" className="text-sm">
-              Step 2 of 2
+              Step 3 of 3
             </Badge>
           </div>
         </div>
@@ -181,137 +193,170 @@ export function EventPaymentSelection({
 
       <div className="container mx-auto px-6 py-8">
         <div className="mx-auto max-w-5xl">
+          {/* Page Title */}
           <div className="mb-8">
-            <p className="text-muted-foreground text-sm">
-              Choose your payment method
-            </p>
             <h1 className="text-3xl font-bold tracking-tight text-balance">
-              Secure Checkout
+              Choose Your Payment Method
             </h1>
             <p className="text-muted-foreground mt-2">
-              Complete your purchase using BCH or a credit card (coming soon).
+              Select how you'd like to pay for your ticket
             </p>
           </div>
 
+          {/* Two Column Layout */}
           <div className="grid gap-8 lg:grid-cols-3">
-            <div className="space-y-4 lg:col-span-2">
-              <Card className="rounded-2xl">
-                <CardHeader>
-                  <CardTitle>Payment Options</CardTitle>
-                  <CardDescription>
-                    Select how you want to complete the purchase
-                  </CardDescription>
+            {/* Left Column - Payment Options */}
+            <div className="space-y-6 lg:col-span-2">
+              {/* BCH Payment Option */}
+              <Card
+                className={`group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-green-500/50 ${processing && 'border-gray-600'} shadow-lg transition-all duration-300 hover:scale-[1.02] hover:border-green-500 hover:shadow-green-500/20`}
+                onClick={handleBCHPayment}
+              >
+                <div className="absolute top-4 right-4">
+                  <Badge className="bg-green-500 hover:bg-green-600">
+                    {processing ? (
+                      <div className="flex items-center space-x-1.5">
+                        <Loader2 className="h-3 w-3" />
+                        <p className="text-muted-foreground">Processing</p>
+                      </div>
+                    ) : (
+                      'Recommended'
+                    )}
+                  </Badge>
+                </div>
+                <CardHeader className="pb-4">
+                  <div className="mb-3 flex items-center gap-3">
+                    <div className="flex size-12 items-center justify-center rounded-xl bg-green-500/10">
+                      <Bitcoin className="size-6 text-green-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl">
+                        Pay with Bitcoin Cash (BCH)
+                      </CardTitle>
+                      <CardDescription className="mt-1">
+                        Save 10% + earn BCH cashback via CashStamp
+                      </CardDescription>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="border-border rounded-xl border p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <div className="bg-primary/10 flex size-10 items-center justify-center rounded-full">
-                            <Bitcoin className="text-primary size-5" />
-                          </div>
-                          <div>
-                            <p className="text-base font-semibold">
-                              Pay with BCH
-                            </p>
-                            <p className="text-muted-foreground text-sm">
-                              Fast, borderless, and low-fee payments
-                            </p>
-                          </div>
-                        </div>
-                        <ul className="text-muted-foreground text-sm leading-relaxed">
-                          <li>• Instant confirmation</li>
-                          <li>• Exclusive BCH discounts</li>
-                          <li>• Cashback rewards on select events</li>
-                        </ul>
-                      </div>
-                      <Button
-                        size="lg"
-                        className="flex-shrink-0"
-                        disabled={processing}
-                        onClick={handleBCHPayment}
-                      >
-                        {processing ? 'Starting...' : 'Pay with BCH'}
-                      </Button>
-                    </div>
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-3xl font-bold text-green-600">
+                      ${discountedPriceO.toFixed(2)}
+                    </span>
+                    <span className="text-muted-foreground line-through">
+                      ${ticketPrice.toFixed(2)}
+                    </span>
+                    <Badge variant="secondary" className="ml-auto">
+                      Save ${amountSaved.toFixed(2)}
+                    </Badge>
                   </div>
-
-                  <div className="border-border rounded-xl border p-4 opacity-75">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <div className="bg-muted flex size-10 items-center justify-center rounded-full">
-                            <CreditCard className="size-5" />
-                          </div>
-                          <div>
-                            <p className="text-base font-semibold">
-                              Credit / Debit Card
-                            </p>
-                            <p className="text-muted-foreground text-sm">
-                              Pay securely with your card
-                            </p>
-                          </div>
-                        </div>
-                        <p className="text-muted-foreground text-sm">
-                          Coming soon — get notified when fiat checkout launches
-                        </p>
-                      </div>
-                      <Button variant="outline" onClick={handleFiatPayment}>
-                        Notify me
-                      </Button>
-                    </div>
-                  </div>
+                  <Separator />
+                  <ul className="space-y-2 text-sm">
+                    <li className="flex items-center gap-2">
+                      <div className="size-1.5 rounded-full bg-green-500" />
+                      <span>10% instant discount on your ticket</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <div className="size-1.5 rounded-full bg-green-500" />
+                      <span>Earn BCH cashback rewards</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <div className="size-1.5 rounded-full bg-green-500" />
+                      <span>Fast, secure blockchain payment</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <div className="size-1.5 rounded-full bg-green-500" />
+                      <span>No credit card fees</span>
+                    </li>
+                  </ul>
                 </CardContent>
               </Card>
 
-              <Card className="rounded-2xl border-dashed">
-                <CardHeader>
-                  <CardTitle>Why pay with BCH?</CardTitle>
+              {/* Fiat Payment Option */}
+              <Card
+                className="group hover:border-muted-foreground/20 cursor-pointer rounded-2xl border-2 border-transparent shadow-md transition-all duration-300 hover:scale-[1.02] hover:shadow-lg"
+                onClick={handleFiatPayment}
+              >
+                <CardHeader className="pb-4">
+                  <div className="mb-3 flex items-center gap-3">
+                    <div className="bg-muted flex size-12 items-center justify-center rounded-xl">
+                      <CreditCard className="text-muted-foreground size-6" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl">
+                        Pay with Google Pay / Apple Pay
+                      </CardTitle>
+                      <CardDescription className="mt-1">
+                        Pay instantly using your mobile wallet
+                      </CardDescription>
+                    </div>
+                  </div>
                 </CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
-                  {[
-                    {
-                      title: 'Zero chargebacks',
-                      description:
-                        'Funds settle instantly, giving organizers peace of mind.',
-                    },
-                    {
-                      title: 'Lower fees',
-                      description:
-                        'Save on every ticket compared to card processing fees.',
-                    },
-                    {
-                      title: 'Global access',
-                      description:
-                        'Fans anywhere can purchase without banking barriers.',
-                    },
-                    {
-                      title: 'Cashback rewards',
-                      description:
-                        'Unlock perks for paying with BCH on eligible events.',
-                    },
-                  ].map((benefit) => (
-                    <div
-                      key={benefit.title}
-                      className="bg-muted/60 rounded-xl p-4"
-                    >
-                      <p className="font-semibold">{benefit.title}</p>
-                      <p className="text-muted-foreground text-sm">
-                        {benefit.description}
-                      </p>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <div className="border-border bg-background flex size-10 items-center justify-center rounded-lg border">
+                        <span className="text-xs font-bold">G Pay</span>
+                      </div>
+                      <span className="text-muted-foreground text-sm">+</span>
+                      <div className="border-border bg-background flex size-10 items-center justify-center rounded-lg border">
+                        <span className="text-xs font-bold"> Pay</span>
+                      </div>
                     </div>
-                  ))}
+                    <div className="ml-auto">
+                      <span className="text-2xl font-bold">
+                        ${ticketPrice.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                  <Separator />
+                  <ul className="space-y-2 text-sm">
+                    <li className="flex items-center gap-2">
+                      <div className="bg-muted-foreground size-1.5 rounded-full" />
+                      <span>Quick checkout with saved cards</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <div className="bg-muted-foreground size-1.5 rounded-full" />
+                      <span>Standard ticket price</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <div className="bg-muted-foreground size-1.5 rounded-full" />
+                      <span>Widely accepted payment method</span>
+                    </li>
+                  </ul>
                 </CardContent>
               </Card>
+              {/* Security Note */}
+              <div className="bg-muted/50 flex items-center justify-center gap-2 rounded-xl px-6 py-4">
+                <svg
+                  className="size-5 text-green-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                  />
+                </svg>
+                <p className="text-muted-foreground text-sm">
+                  All payments are secured with bank-level encryption
+                </p>
+              </div>
             </div>
 
+            {/* Right Column - Event Summary */}
             <div className="lg:col-span-1">
-              <div className="sticky top-24 space-y-4">
+              <div className="sticky top-24">
                 <Card className="rounded-2xl">
                   <CardHeader>
-                    <CardTitle>Order Summary</CardTitle>
+                    <CardTitle>Event Summary</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-5">
+                  <CardContent className="space-y-4">
+                    {/* Event Banner */}
                     <div className="overflow-hidden rounded-xl">
                       <img
                         src={session.event.bannerUrl || '/placeholder.svg'}
@@ -320,32 +365,24 @@ export function EventPaymentSelection({
                       />
                     </div>
 
+                    {/* Event Details */}
                     <div className="space-y-3">
                       <div>
-                        {session.event.category && (
-                          <Badge
-                            variant="secondary"
-                            className="mb-2 text-xs capitalize"
-                          >
-                            {session.event.category
-                              .toLowerCase()
-                              .replace(/_/g, ' ')}
-                          </Badge>
-                        )}
-                        <h2 className="text-lg font-semibold">
+                        <Badge variant="secondary" className="mb-2 text-xs">
+                          {session.event.category}
+                        </Badge>
+                        <h3 className="text-lg leading-tight font-semibold text-balance">
                           {session.event.title}
-                        </h2>
-                        <p className="text-muted-foreground text-sm">
-                          {session.event.summary}
-                        </p>
+                        </h3>
                       </div>
 
                       <Separator />
 
+                      {/* Date & Time */}
                       <div className="flex items-start gap-3">
-                        <Calendar className="text-muted-foreground size-4" />
+                        <Calendar className="text-muted-foreground mt-0.5 size-4 shrink-0" />
                         <div className="space-y-0.5">
-                          <p className="text-sm font-medium">Date &amp; Time</p>
+                          <p className="text-sm font-medium">Date & Time</p>
                           <p className="text-muted-foreground text-xs">
                             {eventDateLabel}
                           </p>
@@ -357,8 +394,9 @@ export function EventPaymentSelection({
 
                       <Separator />
 
+                      {/* Location */}
                       <div className="flex items-start gap-3">
-                        <MapPin className="text-muted-foreground size-4" />
+                        <MapPin className="text-muted-foreground mt-0.5 size-4 shrink-0" />
                         <div className="space-y-0.5">
                           <p className="text-sm font-medium">Location</p>
                           <p className="text-muted-foreground text-xs">
@@ -372,54 +410,44 @@ export function EventPaymentSelection({
                         </div>
                       </div>
 
+                      {/* Organizer/Artist */}
+                      {session.event.artists &&
+                        session.event.artists.length > 0 && (
+                          <>
+                            <Separator />
+                            <div className="flex items-start gap-3">
+                              <User className="text-muted-foreground size-4" />
+                              <div className="space-y-0.5">
+                                <p className="text-sm font-medium">
+                                  Featured Artists
+                                </p>
+                                <p className="text-muted-foreground text-xs">
+                                  {featuredArtists.length
+                                    ? featuredArtists.join(', ')
+                                    : 'Lineup TBA'}
+                                </p>
+                              </div>
+                            </div>
+                          </>
+                        )}
+
                       <Separator />
 
-                      <div className="flex items-start gap-3">
-                        <User className="text-muted-foreground size-4" />
-                        <div className="space-y-0.5">
-                          <p className="text-sm font-medium">Artists</p>
-                          <p className="text-muted-foreground text-xs">
-                            {featuredArtists.length
-                              ? featuredArtists.join(', ')
-                              : 'Lineup TBA'}
-                          </p>
+                      {/* Ticket Info */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span>Ticket Price</span>
+                          <span>${discountedPriceO.toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
+                          <span>BCH Discount</span>
+                          <span>- ${amountSaved.toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-lg font-semibold">
+                          <span>Total</span>
+                          <span>${discountedPriceO.toFixed(2)}</span>
                         </div>
                       </div>
-                    </div>
-
-                    <Separator />
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span>Ticket Price</span>
-                        <span>${ticketPrice.toFixed(2)}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
-                        <span>BCH Discount</span>
-                        <span>- ${discountValue.toFixed(2)}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-lg font-semibold">
-                        <span>Total</span>
-                        <span>${discountedPrice.toFixed(2)}</span>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl bg-muted/40 p-4 text-sm">
-                      <p className="font-medium">Attendee</p>
-                      <p>{session.attendeeName}</p>
-                      <p className="text-muted-foreground">{session.attendeeEmail}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="rounded-2xl bg-primary text-primary-foreground">
-                  <CardContent className="flex items-center gap-4 p-5">
-                    <Sparkles className="size-10" />
-                    <div>
-                      <p className="text-lg font-semibold">Need help?</p>
-                      <p className="text-primary-foreground/90 text-sm">
-                        Our team is here for you — support@dancefit.com
-                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -428,7 +456,6 @@ export function EventPaymentSelection({
           </div>
         </div>
       </div>
-
       <Dialog open={showComingSoonModal} onOpenChange={setShowComingSoonModal}>
         <DialogContent>
           <DialogHeader>

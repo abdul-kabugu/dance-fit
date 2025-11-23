@@ -7,14 +7,18 @@ import { useRouter } from 'next/navigation';
 
 import {
   Calendar,
+  Check,
   CheckCircle2,
   Coins,
   Copy,
+  Download,
   MapPin,
   QrCode,
   Share2,
+  Ticket,
   User,
 } from 'lucide-react';
+import QRCode from 'qrcode';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,12 +47,14 @@ interface EventCheckoutSuccessProps {
   session: CheckoutSessionDetail;
   eventIdentifier: string;
   paymentId?: string | null;
+  cashbackDetails: CashbackPayload;
 }
 
 export function EventCheckoutSuccess({
   session,
   eventIdentifier,
   paymentId,
+  cashbackDetails,
 }: EventCheckoutSuccessProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -88,7 +94,8 @@ export function EventCheckoutSuccess({
 
   const ticket = session.payment?.ticket;
   const nftTokenId = ticket?.nftTicket?.tokenId;
-  const [cashbackDetails, setCashbackDetails] = useState<CashbackPayload | null>(
+  const [cashBackqrCodeUrl, setCashBackQrCodeUrl] = useState<string>('');
+  /*const [cashbackDetails, setCashbackDetails] = useState<CashbackPayload | null>(
     null,
   );
   const [cashbackError, setCashbackError] = useState<string | null>(null);
@@ -131,11 +138,48 @@ export function EventCheckoutSuccess({
     return () => {
       cancelled = true;
     };
-  }, [paymentId]);
+  }, [paymentId]);*/
 
+  // Generate QR code
+  const generateQRCode = async (paywallet: string) => {
+    try {
+      const qrUrl = await QRCode.toDataURL(paywallet, {
+        width: 320,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#ffffff',
+        },
+      });
+      setCashBackQrCodeUrl(qrUrl);
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+    }
+  };
+
+  // generate QR code
+
+  useEffect(() => {
+    //setIsGenerating(true);
+    const handleAutoGnerate = async () => {
+      //const quote = await getBchQuote(ticketPrice);
+      //setquuoteRes(quote);
+      await generateQRCode(cashbackDetails?.wifEncrypted);
+    };
+    handleAutoGnerate();
+  }, []);
+  const DISCOUNT_PERCENT = 0.1; // 10%
   const fallbackCashback = session.payment?.cashback ?? null;
   const cashbackAmount =
     cashbackDetails?.amountSats ?? fallbackCashback?.amountSats ?? null;
+  const ticketPrice = useMemo(() => {
+    return session.ticketType.priceCents / 100;
+  }, [session.ticketType.priceCents]);
+
+  const amountSaved = useMemo(
+    () => ticketPrice * DISCOUNT_PERCENT,
+    [ticketPrice],
+  );
   const event = session.event;
   const eventDate = event.startDateTime ? new Date(event.startDateTime) : null;
   const formattedDate = eventDate
@@ -166,8 +210,9 @@ export function EventCheckoutSuccess({
       : event.onlineUrl;
   const featuredArtists = useMemo(
     () =>
-      event.artists?.map((assignment) => assignment.artist?.user?.name).filter(Boolean) ??
-      [],
+      event.artists
+        ?.map((assignment) => assignment.artist?.user?.name)
+        .filter(Boolean) ?? [],
     [event.artists],
   );
 
@@ -193,305 +238,271 @@ export function EventCheckoutSuccess({
   };
 
   return (
-    <div className="bg-muted/30 min-h-screen">
-      <header className="border-border bg-background border-b">
+    <div className="via-background to-background min-h-screen bg-gradient-to-b from-green-50/30 dark:from-green-950/10">
+      {/* Header */}
+      <header className="border-border bg-background/80 border-b backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <Link
-              href={`/events/${eventIdentifier}`}
-              className="flex items-center gap-2"
-            >
-              <div className="bg-primary flex size-10 items-center justify-center rounded-full text-primary-foreground">
-                <CheckCircle2 className="size-5" />
+            <Link href="/events" className="flex items-center gap-2">
+              <div className="bg-primary flex size-8 items-center justify-center rounded-lg">
+                <span className="text-primary-foreground text-lg font-bold">
+                  D
+                </span>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-muted-foreground">
-                  Order confirmed
-                </p>
-                <p className="text-foreground font-semibold">
-                  #{ticket?.referenceCode ?? 'DF-ORDER'}
-                </p>
-              </div>
+              <span className="hidden text-xl font-semibold sm:inline">
+                DanceFit
+              </span>
             </Link>
-            <Badge variant="outline" className="text-sm">
-              Ticket ready
-            </Badge>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-10">
-        <div className="text-center">
-          <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <CheckCircle2 className="size-10" />
+      {/* Content */}
+      <div className="container mx-auto px-6 py-12">
+        <div className="mx-auto max-w-4xl">
+          {/* Success Header */}
+          <div className="mb-12 text-center">
+            <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/20">
+              <CheckCircle2 className="size-10 text-green-600 dark:text-green-400" />
+            </div>
+            <h1 className="mb-3 text-4xl font-bold tracking-tight text-balance">
+              Payment Successful!
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              Your NFT ticket has been issued.
+            </p>
           </div>
-          <h1 className="text-4xl font-bold tracking-tight text-balance">
-            You&apos;re all set!
-          </h1>
-          <p className="text-muted-foreground mt-3 text-lg">
-            Your ticket is confirmed. Keep the QR code below handy for entry.
-          </p>
-        </div>
 
-        <div className="mt-10 grid gap-8 lg:grid-cols-[3fr_2fr]">
           <div className="space-y-6">
-            <Card className="rounded-3xl">
-              <CardHeader className="flex flex-row items-start justify-between gap-4">
-                <div>
-                  <CardTitle className="text-2xl">{event.title}</CardTitle>
-                  <CardDescription className="text-base">
-                    {event.summary}
-                  </CardDescription>
-                </div>
-                <Badge variant="secondary">
-                  {session.ticketType.name ?? 'Admission'}
-                </Badge>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid gap-6 sm:grid-cols-2">
-                  <div className="flex items-start gap-3">
-                    <Calendar className="text-primary mt-1 size-5" />
-                    <div>
-                      <p className="text-sm font-semibold text-muted-foreground">
-                        Date &amp; Time
-                      </p>
-                      <p className="text-lg font-semibold">{formattedDate}</p>
-                      <p className="text-muted-foreground">{formattedTime}</p>
-                    </div>
+            {/* Ticket Card */}
+            <Card className="overflow-hidden rounded-2xl border-2 border-green-500/20 shadow-lg">
+              <CardHeader className="bg-gradient-to-br from-green-500/5 to-transparent">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Ticket className="size-6 text-green-600" />
+                    <CardTitle className="text-2xl">Your Ticket</CardTitle>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <MapPin className="text-primary mt-1 size-5" />
-                    <div>
-                      <p className="text-sm font-semibold text-muted-foreground">
-                        Location
-                      </p>
-                      <p className="text-lg font-semibold">{eventLocation}</p>
-                      {addressLine && (
-                        <p className="text-muted-foreground">{addressLine}</p>
-                      )}
-                    </div>
+                  <Badge className="bg-green-600 text-white">
+                    NFT Ticket Issued
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 p-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-muted-foreground mb-1 text-sm">
+                      Reference Code
+                    </p>
+                    <p className="font-mono text-lg font-semibold">
+                      {ticket?.referenceCode}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground mb-1 text-sm">Status</p>
+                    <Badge
+                      variant="secondary"
+                      className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                    >
+                      Confirmed
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground mb-1 text-sm">
+                      Ticket Type
+                    </p>
+                    <p className="font-semibold">{session?.ticketType.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground mb-1 text-sm">
+                      Attendee Name
+                    </p>
+                    <p className="font-semibold">
+                      {session?.attendeeName || 'Guest'}
+                    </p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-muted-foreground mb-1 text-sm">Event</p>
+                    <p className="font-semibold">{event.title}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-muted-foreground mb-1 text-sm">
+                      Date & Time
+                    </p>
+                    <p className="font-medium">
+                      {formattedDate} • {formattedTime}
+                    </p>
                   </div>
                 </div>
 
                 <Separator />
 
-                <div className="grid gap-6 md:grid-cols-2">
-                  <div className="rounded-2xl bg-muted/50 p-4">
-                    <p className="text-sm font-semibold text-muted-foreground">
-                      Ticket Holder
-                    </p>
-                    <p className="text-xl font-semibold">
-                      {session.attendeeName}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {session.attendeeEmail}
-                    </p>
+                <Button className="w-full" size="lg">
+                  <Download className="mr-2 size-4" />
+                  Download Ticket
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Cashback (CashStamp) Section */}
+            <Card className="overflow-hidden rounded-2xl border-2 border-orange-500/20">
+              <CardHeader className="bg-gradient-to-br from-orange-500/5 to-transparent">
+                <div className="flex items-center gap-3">
+                  <Coins className="size-6 text-orange-600" />
+                  <CardTitle className="text-xl">
+                    Claim Your BCH Cashback
+                  </CardTitle>
+                </div>
+                <CardDescription>
+                  Scan to claim your BCH cashback reward for attending this
+                  event.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 p-6">
+                <div className="flex flex-col items-center gap-6 sm:flex-row">
+                  {/* CashStamp QR */}
+                  <div className="shrink-0 rounded-xl border-2 border-orange-500/20 bg-orange-50 p-4 dark:bg-orange-950/20">
+                    <div className="size-64 rounded-xl bg-gradient-to-br from-green-50 to-green-100">
+                      {cashBackqrCodeUrl && (
+                        <img
+                          src={cashBackqrCodeUrl}
+                          alt="QR Code"
+                          className="h-full w-full rounded-xl border-2"
+                        />
+                      )}
+                    </div>
                   </div>
-                  <div className="rounded-2xl bg-primary/10 p-4">
-                    <p className="text-sm font-semibold text-muted-foreground">
-                      Ticket Reference
-                    </p>
-                    <p className="text-xl font-semibold">
-                      {ticket?.referenceCode ?? 'Pending'}
-                    </p>
-                    <p className="text-muted-foreground">
-                      Show this code at the entrance
+
+                  {/* Cashback Amount */}
+                  <div className="flex-1 space-y-3 text-center sm:text-left">
+                    <div>
+                      <p className="text-muted-foreground mb-2 text-sm">
+                        Your Cashback Reward
+                      </p>
+                      <p className="text-muted-foreground mt-1 text-sm">
+                        ≈ ${amountSaved.toFixed(2)} USD
+                      </p>
+                    </div>
+                    <p className="text-sm">
+                      Scan the QR code with CashStamp to claim your BCH reward
+                      after attending the event.
                     </p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="rounded-3xl">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-2xl">Your QR Ticket</CardTitle>
-                  <CardDescription>
-                    Present this code at the entrance to check in.
-                  </CardDescription>
+            {/* NFT Delivery - Selene Wallet */}
+            <Card className="hidden rounded-2xl">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <QrCode className="text-primary size-6" />
+                  <CardTitle className="text-xl">
+                    Add Your NFT Ticket to Selene Wallet
+                  </CardTitle>
                 </div>
-                <Button
-                  variant="ghost"
-                  className="gap-2"
-                  onClick={() => handleCopy(eventLink, setCopiedEventLink)}
-                >
-                  <Share2 className="size-4" />
-                  {copiedEventLink ? 'Copied' : 'Share Event'}
-                </Button>
+                <CardDescription>
+                  Scan with Selene Wallet to import your NFT event ticket.
+                </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-                <div className="flex flex-col items-center gap-4 rounded-2xl border p-6">
-                  <div className="bg-muted flex size-48 items-center justify-center rounded-2xl">
-                    <QrCode className="size-40 text-muted-foreground" />
+              <CardContent className="space-y-6">
+                <div className="flex flex-col items-center gap-4 sm:flex-row">
+                  {/* QR Code */}
+                  <div className="border-border shrink-0 rounded-xl border-2 bg-white p-4">
+                    <div className="size-40 rounded-lg bg-gradient-to-br from-purple-50 to-blue-50">
+                      <img
+                        src={`/placeholder.svg?height=160&width=160&query=Selene+Wallet+NFT+QR+code`}
+                        alt="Selene Wallet QR Code"
+                        className="size-full rounded-lg object-cover"
+                      />
+                    </div>
                   </div>
-                  <p className="text-center text-sm text-muted-foreground">
-                    We&apos;ve emailed you a scannable QR code as well
-                  </p>
-                </div>
-                <div className="space-y-4">
-                  <div className="rounded-2xl bg-muted/60 p-5">
-                    <p className="text-sm font-semibold text-muted-foreground">
-                      NFT Ticket
-                    </p>
-                    <p className="text-2xl font-semibold">
-                      {nftTokenId ? `Token #${nftTokenId}` : 'Mint pending'}
-                    </p>
-                    {nftTokenId ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="mt-3"
-                        onClick={() => handleCopy(nftTokenId, setCopiedTokenId)}
-                      >
-                        <Copy className="mr-2 size-4" />
-                        {copiedTokenId ? 'Copied!' : 'Copy Token ID'}
-                      </Button>
-                    ) : (
-                      <p className="text-muted-foreground text-sm">
-                        We&apos;ll notify you when your NFT ticket is minted.
+
+                  {/* NFT Token ID */}
+                  <div className="flex-1 space-y-3">
+                    <div>
+                      <p className="text-muted-foreground mb-2 text-sm font-medium">
+                        NFT Token ID
                       </p>
-                    )}
-                  </div>
-                  {cashbackAmount ? (
-                    <div className="rounded-2xl bg-primary/10 p-5">
-                      <div className="flex items-start gap-3">
-                        <div className="bg-primary flex size-12 items-center justify-center rounded-full text-primary-foreground">
-                          <Coins className="size-6" />
-                        </div>
-                        <div className="space-y-2">
-                          <div>
-                            <p className="text-sm font-semibold text-muted-foreground">
-                              Cashback Earned
-                            </p>
-                            <p className="text-2xl font-semibold">
-                              {(cashbackAmount / 1e8).toFixed(4)} BCH
-                            </p>
-                            <p className="text-muted-foreground text-sm">
-                              {cashbackDetails?.status
-                                ? `Status: ${cashbackDetails.status}`
-                                : 'Use your cashback in future events'}
-                            </p>
-                          </div>
-                          {cashbackDetails ? (
-                            <div className="rounded-xl bg-white/70 p-3 text-xs font-mono text-muted-foreground">
-                              <div>
-                                <span className="font-semibold">Address:</span>{' '}
-                                <span className="break-all">
-                                  {cashbackDetails.bchAddress}
-                                </span>
-                              </div>
-                              <div className="mt-1">
-                                <span className="font-semibold">WIF:</span>{' '}
-                                <span className="break-all">
-                                  {cashbackDetails.wifEncrypted}
-                                </span>
-                              </div>
-                              <div className="mt-1">
-                                <span className="font-semibold">Updated:</span>{' '}
-                                {new Date(cashbackDetails.updatedAt).toLocaleString()}
-                              </div>
-                            </div>
-                          ) : cashbackError ? (
-                            <p className="text-destructive text-xs">
-                              {cashbackError}
-                            </p>
-                          ) : null}
-                        </div>
+                      <div className="border-border bg-muted/30 flex items-center gap-2 rounded-lg border p-3">
+                        <code className="flex-1 font-mono text-xs">
+                          {nftTokenId}
+                        </code>
                       </div>
                     </div>
-                  ) : cashbackError ? (
-                    <p className="text-destructive text-xs">
-                      {cashbackError}
-                    </p>
-                  ) : null}
-                </div>
-              </CardContent>
-            </Card>
-
-            {featuredArtists.length > 0 && (
-              <Card className="rounded-3xl">
-                <CardHeader>
-                  <CardTitle>Featured Artists</CardTitle>
-                  <CardDescription>
-                    Meet the artists performing at this event.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
-                  {featuredArtists.map((name) => (
-                    <div
-                      key={name}
-                      className="rounded-2xl border p-4 text-sm font-medium"
-                    >
-                      {name}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          <div className="space-y-6">
-            <Card className="rounded-3xl">
-              <CardHeader>
-                <CardTitle>Event Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-2xl bg-muted/40 p-4">
-                  <p className="text-sm font-semibold text-muted-foreground">
-                    Order Summary
-                  </p>
-                  <div className="mt-3 space-y-1 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span>Ticket</span>
-                      <span>
-                        {session.ticketType.priceCents === 0
-                          ? 'Free'
-                          : `$${(session.ticketType.priceCents / 100).toFixed(2)}`}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Payment Method</span>
-                      <span>{session.payment?.id ? 'BCH' : 'Pending'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-muted/40 p-4">
-                  <p className="text-sm font-semibold text-muted-foreground">
-                    Keep Exploring
-                  </p>
-                  <p className="text-muted-foreground text-sm">
-                    Discover more bachata, salsa, and kizomba experiences on
-                    DanceFit.
-                  </p>
-                  <div className="mt-3 grid gap-2">
-                    <Button onClick={handleBackToEvent}>View Event</Button>
-                    <Button variant="secondary" asChild>
-                      <Link href="/events">Browse Events</Link>
+                    <Button variant="outline" className="w-full bg-transparent">
+                      {copiedTokenId ? (
+                        <Check className="mr-2 size-4 text-green-600" />
+                      ) : (
+                        <Copy className="mr-2 size-4" />
+                      )}
+                      {copiedTokenId ? 'Copied!' : 'Copy NFT Token ID'}
                     </Button>
                   </div>
                 </div>
+
+                <div className="bg-muted/50 rounded-lg p-4">
+                  <p className="text-sm">
+                    <strong>Note:</strong> Your NFT ticket can be used for event
+                    entry, traded, or kept as a digital collectible. Download
+                    the Selene Wallet app to manage your NFT tickets.
+                  </p>
+                </div>
               </CardContent>
             </Card>
 
-            <Card className="rounded-3xl bg-primary text-primary-foreground">
-              <CardContent className="space-y-4 p-6">
+            {/* Event Summary */}
+
+            {/* Share Section */}
+            <Card className="rounded-2xl">
+              <CardHeader>
                 <div className="flex items-center gap-3">
-                  <div className="bg-primary-foreground/20 rounded-full p-2">
-                    <User className="size-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold">Need assistance?</p>
-                    <p className="text-primary-foreground/80 text-sm">
-                      support@dancefit.com
-                    </p>
-                  </div>
+                  <Share2 className="text-primary size-6" />
+                  <CardTitle className="text-xl">Share This Event</CardTitle>
                 </div>
-                <p className="text-sm text-primary-foreground/90">
-                  Save this page in case you need to show your QR code again.
-                </p>
+                <CardDescription>
+                  Invite your friends to join this amazing event!
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button variant="outline" className="w-full bg-transparent">
+                  {copiedEventLink ? (
+                    <Check className="mr-2 size-4 text-green-600" />
+                  ) : (
+                    <Copy className="mr-2 size-4" />
+                  )}
+                  {copiedEventLink ? 'Copied!' : 'Copy Event Link'}
+                </Button>
+                <Button variant="outline" className="w-full bg-transparent">
+                  <svg
+                    className="mr-2 size-4"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                  </svg>
+                  Share on WhatsApp
+                </Button>
+                <Button variant="outline" className="w-full bg-transparent">
+                  <Share2 className="mr-2 size-4" />
+                  Share on Instagram Story
+                </Button>
               </CardContent>
             </Card>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col gap-3 pt-6 sm:flex-row">
+              <Button size="lg" className="flex-1" asChild>
+                <Link href="/dashboard">Go to Dashboard</Link>
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="flex-1 bg-transparent"
+                asChild
+              >
+                <Link href="/events">Browse More Events</Link>
+              </Button>
+            </div>
           </div>
         </div>
       </div>

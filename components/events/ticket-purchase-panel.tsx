@@ -6,10 +6,7 @@ import Link from 'next/link';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 
@@ -43,9 +40,8 @@ export function TicketPurchasePanel({
     return `${checkoutPath}?ticket=${encodeURIComponent(selectedTicketId)}`;
   }, [checkoutPath, selectedTicketId]);
 
-  const formattedMinimum = minimumPrice && minimumPrice > 0
-    ? `$${minimumPrice.toFixed(2)}`
-    : 'Free';
+  const formattedMinimum =
+    minimumPrice && minimumPrice > 0 ? `$${minimumPrice.toFixed(2)}` : 'Free';
 
   const hasTickets = ticketTypes.length > 0;
 
@@ -68,34 +64,35 @@ export function TicketPurchasePanel({
               {ticketTypes.map((ticket) => {
                 const selected = selectedTicketId === ticket.id;
                 return (
-                  <button
-                    key={ticket.id}
-                    type="button"
-                    onClick={() => setSelectedTicketId(ticket.id)}
-                    className={cn(
-                      'border-border bg-muted/30 space-y-1 rounded-lg border p-3 text-left transition hover:border-primary',
-                      selected && 'border-primary ring-1 ring-primary',
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium">{ticket.name}</p>
-                      <p className="text-sm font-semibold">
-                        {ticket.priceCents === 0
-                          ? 'Free'
-                          : `$${(ticket.priceCents / 100).toFixed(2)}`}
-                      </p>
+                  <>
+                    <div
+                      key={ticket.id}
+                      className={cn(
+                        'border-border bg-muted/30 space-y-1 rounded-lg border p-3',
+                        selected && 'border-primary ring-primary ring-1',
+                      )}
+                      onClick={() => setSelectedTicketId(ticket.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">{ticket.name}</p>
+                        <p className="text-sm font-semibold">
+                          {ticket.priceCents === 0
+                            ? 'Free'
+                            : `$${(ticket.priceCents / 100).toFixed(2)}`}
+                        </p>
+                      </div>
+                      {ticket.description && (
+                        <p className="text-muted-foreground text-xs">
+                          {ticket.description}
+                        </p>
+                      )}
+                      {ticket.isEarlyBird && (
+                        <Badge variant="secondary" className="text-xs">
+                          Early Bird
+                        </Badge>
+                      )}
                     </div>
-                    {ticket.description && (
-                      <p className="text-muted-foreground text-xs">
-                        {ticket.description}
-                      </p>
-                    )}
-                    {ticket.isEarlyBird ? (
-                      <Badge variant="secondary" className="text-xs">
-                        Early Bird
-                      </Badge>
-                    ) : null}
-                  </button>
+                  </>
                 );
               })}
             </div>
@@ -119,16 +116,9 @@ export function TicketPurchasePanel({
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-muted-foreground text-xs">From</p>
-            <p className="text-primary text-xl font-bold">
-              {formattedMinimum}
-            </p>
+            <p className="text-primary text-xl font-bold">{formattedMinimum}</p>
           </div>
-          <Button
-            size="lg"
-            className="flex-1"
-            asChild
-            disabled={!hasTickets}
-          >
+          <Button size="lg" className="flex-1" asChild disabled={!hasTickets}>
             <Link href={checkoutHref}>Get Tickets</Link>
           </Button>
         </div>
